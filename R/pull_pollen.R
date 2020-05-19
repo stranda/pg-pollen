@@ -17,10 +17,11 @@ long_east = -70
 # version
 version = '1.0'
 
-# get datasets withing bounded region
+# get datasets withing bounded region from NEOTOMA
 all.datasets <- get_dataset(loc = c(long_west, lat_lo, long_east, lat_hi),
                             datasettype = "pollen")
 
+# plot pollen core locations within bounding box
 map <- map_data("world")
 ggplot(data = data.frame(map), aes(long, lat)) + 
   geom_polygon(aes(group=group), color = "steelblue", alpha = 0.2) +
@@ -102,8 +103,7 @@ compiled.counts = compiled.cores[,13:ncol(compiled.cores)]
 compiled.props  = compiled.cores[,13:ncol(compiled.cores)]/rowSums(compiled.cores[,13:ncol(compiled.cores)])
 compiled.locs   = compiled.cores[,c('x', 'y')]
 
-# taxa.keep = c('Acer', 'Alnus','Betula', 'Fagus', 'Ostrya.Carpinus', 
-#               'Picea', 'Pinus', 'Quercus', 'Tsuga', 'Ulmus')
+# extract pollen data from specified taxa
 taxa.keep = c('Acer', 'Alnus','Betula', 'Cyperaceae', 'Fagus', 'Ostrya.Carpinus', 
               'Picea', 'Pinus', 'Quercus', 'Tsuga', 'Ulmus')
 taxa.nontree = c('Other', 'Prairie.Forbs', 'Poaceae')
