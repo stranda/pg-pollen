@@ -1,11 +1,11 @@
 library(reshape2)
-require(rdist)
-require(rgeos)
-require(ggplot2)
-require(sp)
-require(rgdal)
+library(rdist)
+library(rgeos)
+library(ggplot2)
+library(sp)
+library(rgdal)
 library(raster)
-require(fields)
+library(fields)
 
 run='pgSPLM_test'
 
@@ -54,22 +54,18 @@ dat = readRDS( paste0('polya-gamma-dat_pgR_', run,'.RDS'))
 rescale = dat$rescale
 locs_pollen <- dat$locs*rescale 
 names(locs_pollen) <- c("x", "y")
-
 taxa.keep =  as.vector(colnames(dat$y))#[!(colnames(dat) %in% c('x', 'y'))])
 y = as.data.frame(dat$y[,taxa.keep])
-
 N_cores = nrow(locs_pollen)
-
 pol_box <- bbox_tran(locs_pollen, '~ x + y',
                      proj_out,
                      proj_out)
-
 xlim = c(pol_box[1]-24000, pol_box[3]+24000)
 ylim = c(pol_box[2]-24000, pol_box[4]+24000)
 
+
 #### DISTANCE MATRICES ####
 D_pollen <- fields::rdist(locs_pollen/rescale)# N_cores x N_cores
-# D_pollen <- rdist(as.matrix(locs_pollen/rescale))# N_cores x N_cores
 any(D_pollen == 0, na.rm = TRUE)   # check if there are off-diagonal zeros
 D_pollen <- ifelse(D_pollen == 0, 0.007, D_pollen)  # remove them
 diag(D_pollen) <- 0
@@ -78,7 +74,6 @@ diag(D_pollen) <- 0
 #### PREDICTIONS ####
 N_iter = length(out$tau)
 J = dim(out$eta)[3] + 1
-
 burn = 0
 N_keep = N_iter-burn#+1
 
@@ -95,8 +90,6 @@ correlation_function <- function(D, theta) {
 }
 
 x = seq(0, max(D_pollen), length=1000)
-# taxa = c('Acer', 'Alnus','Betula', 'Fagus', 'Ostrya.Carpinus', 'Ulmus')
-# taxa = c('Alnus','Betula', 'Fagus', 'Ostrya.Carpinus', 'Picea', 'Pinus', 'Quercus', 'Tsuga', 'Other')
 taxa = taxa.keep
 cov_df = data.frame(taxon=character(0),
                     distance=numeric(0),
@@ -119,6 +112,7 @@ ggplot(data=cov_df) +
   ylab("Covariance")
 ggsave(paste0("../figs/polya-gamma/covariance_vs_distance_", run, ".pdf"))#, device="pdf", type="cairo")
 
+
 ###############################################################################################################################
 ## trace
 ###############################################################################################################################
@@ -139,7 +133,6 @@ ggplot(data=theta_melt) +
 ggsave(paste0("../figs/polya-gamma/trace_theta_", run, ".png"), device="png", type="cairo")
 
 # mu
-# mu_melt = melt(mu)
 mu_melt = melt(beta)
 colnames(mu_melt) = c('iter', 'taxon', 'value')
 mu_melt$taxon = taxa[mu_melt$taxon]
@@ -174,8 +167,6 @@ eta_to_pi <- function(eta) {
   return(pi)
 }
 
-# pis <- eta_to_pi(etas)
-
 pis = array(NA, dim=c(N_cores, J, N_keep))
 for (i in 1:N_keep){
   pis[,,i] <- eta_to_pi(eta[i,,])
@@ -183,7 +174,7 @@ for (i in 1:N_keep){
 }
 
 pi_mean = apply(pis, c(1,2), mean, na.rm=TRUE)
-colnames(pi_mean) = taxa.keep#c('Acer', 'Alnus','Betula', 'Fagus', 'Ostrya.Carpinus', 'Ulmus')
+colnames(pi_mean) = taxa.keep
 
 preds = data.frame(locs_pollen, pi_mean)
 preds_melt = melt(preds, id.vars=c('x', 'y'))
@@ -250,8 +241,6 @@ ggsave(paste0("../figs/all_binned_tiled_", run, ".png"), device="png", type="cai
 ###############################################################################################################################
 ## observed versus predicted
 ###############################################################################################################################
-
-# foo = dcast(all_melt, x+y+variable~type, fun.aggregate=mean)
 
 foo = merge(preds_melt, dat_melt, by=c("x", "y", "variable"))
 ggplot(data=foo) +

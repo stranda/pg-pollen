@@ -1,11 +1,11 @@
 library(reshape2)
-require(rdist)
-require(rgeos)
-require(ggplot2)
-require(sp)
-require(rgdal)
+library(rdist)
+library(rgeos)
+library(ggplot2)
+library(sp)
+library(rgdal)
 library(raster)
-require(fields)
+library(fields)
 
 #### READ MAP DATA ####
 # getting data ready
@@ -15,6 +15,7 @@ proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
 proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
 +towgs84=0,0,0"
 
+# read in North America and Great Lakes shapefiles
 na_shp <- readOGR("../data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
 na_shp <- sp::spTransform(na_shp, proj_out)
 cont_shp <- subset(na_shp,
@@ -32,7 +33,6 @@ dat = readRDS('polya-gamma-dat.RDS')
 rescale = dat$rescale
 locs_pollen <- dat$locs*rescale 
 names(locs_pollen) <- c("x", "y")
-
 y = dat$y
 
 #### CONSTRUCT GRID ####
@@ -54,14 +54,11 @@ bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
   bbox <- as.vector(sp::bbox(sp::spTransform(x, CRSobj = sp::CRS(to))))
   return(bbox)
 }
+
 # get bounding box from pollen record coordinates
-# pol_box <- bbox_tran(locs_pollen, '~ x + y',
-#                      '+init=epsg:3175',
-#                      '+init=epsg:3175')
 pol_box <- bbox_tran(locs_pollen, '~ x + y',
                      proj_out,
                      proj_out)
-
 xlim = c(pol_box[1]-24000, pol_box[3]+24000)
 ylim = c(pol_box[2]-24000, pol_box[4]+24000)
 
