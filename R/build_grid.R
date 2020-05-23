@@ -16,24 +16,25 @@ proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
 +towgs84=0,0,0"
 
 # read in North America and Great Lakes shapefiles
-na_shp <- readOGR("../data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
+na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
 na_shp <- sp::spTransform(na_shp, proj_out)
 cont_shp <- subset(na_shp,
                    (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
-lake_shp <- readOGR("../data/map-data/Great_Lakes.shp", "Great_Lakes")
+lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj_out)
 
 
 #### READ IN MODEL DATA AND OUTPUT ####
-out = readRDS('polya-gamma-posts_test.RDS')
-dat = readRDS('polya-gamma-dat.RDS')
+# out = readRDS('polya-gamma-posts_test.RDS')
+# dat = readRDS('polya-gamma-dat.RDS')
+dat = readRDS('data/12taxa_pollen_dat_v1.0.RDS')
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
-rescale = dat$rescale
-locs_pollen <- dat$locs*rescale 
-names(locs_pollen) <- c("x", "y")
-y = dat$y
+locs_pollen <- data.frame(dat[,c('x', 'y')] )
+
+taxa = colnames(dat)[!(colnames(dat) %in% c('x', 'y'))]
+y = dat[,taxa]
 
 #### CONSTRUCT GRID ####
 # function to construct a raster grid
