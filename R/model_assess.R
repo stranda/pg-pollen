@@ -7,19 +7,15 @@ library(rgdal)
 library(raster)
 library(fields)
 
-run='pgSPLM_test'
+# run='pgSPLM_vary-both'
+# run='pgSPLM_vary-both-tmp'
+# run='pgSPLM_vary-both-tmp-squared'
+# 
+# run = "pgSPLM_vary-both-tmp-sqrt"
 
-#### CONSTRUCT GRID ####
-# function to construct a raster grid
-# take in bounding box for grid, resolution in m, and projection
-build_grid <- function(veg_box, resolution = 24000, proj = '+init=epsg:3175') {
-  raster::raster(xmn = veg_box[1],
-                 xmx = veg_box[3],
-                 ymn = veg_box[2],
-                 ymx = veg_box[4],
-                 resolution = resolution,
-                 crs = proj)
-}
+run='pgSPLM_ABI'
+
+dir.create(file.path('figures'), showWarnings = FALSE)
 
 bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
   
@@ -38,16 +34,16 @@ proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
 proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
 +towgs84=0,0,0"
 
-na_shp <- readOGR("../data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
+na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
 na_shp <- sp::spTransform(na_shp, proj_out)
 cont_shp <- subset(na_shp,
                    (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
-lake_shp <- readOGR("../data/map-data/Great_Lakes.shp", "Great_Lakes")
+lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj_out)
 
 #### READ IN MODEL DATA AND OUTPUT ####
-out = readRDS(paste0('polya-gamma-posts_pgR_', run,'.RDS'))
-dat = readRDS( paste0('polya-gamma-dat_pgR_', run,'.RDS'))
+out = readRDS(paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
+dat = readRDS( paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -57,6 +53,8 @@ names(locs_pollen) <- c("x", "y")
 taxa.keep =  as.vector(colnames(dat$y))#[!(colnames(dat) %in% c('x', 'y'))])
 y = as.data.frame(dat$y[,taxa.keep])
 N_cores = nrow(locs_pollen)
+
+
 pol_box <- bbox_tran(locs_pollen, '~ x + y',
                      proj_out,
                      proj_out)
@@ -72,12 +70,12 @@ diag(D_pollen) <- 0
 
 
 #### PREDICTIONS ####
-N_iter = length(out$tau)
+N_iter = dim(out$tau2)[1]
 J = dim(out$eta)[3] + 1
 burn = 0
 N_keep = N_iter-burn#+1
 
-tau   = out$tau[burn:N_iter]
+tau2   = out$tau2[burn:N_iter,]
 theta = out$theta[burn:N_iter,,]
 omega = out$omega[burn:N_iter,,]
 eta   = out$eta[burn:N_iter,,]
@@ -110,7 +108,7 @@ ggplot(data=cov_df) +
   xlim(c(0,500)) + 
   xlab("Distance (km)") + 
   ylab("Covariance")
-ggsave(paste0("../figs/polya-gamma/covariance_vs_distance_", run, ".pdf"))#, device="pdf", type="cairo")
+ggsave(paste0("figures/covariance_vs_distance_", run, ".pdf"))#, device="pdf", type="cairo")
 
 
 ###############################################################################################################################
@@ -118,29 +116,31 @@ ggsave(paste0("../figs/polya-gamma/covariance_vs_distance_", run, ".pdf"))#, dev
 ###############################################################################################################################
 
 # tau
-tau_melt = data.frame(iter=seq(1, N_keep), value=tau)
-ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value))
-ggsave(paste0("../figs/trace_tau_", run, ".png"), device="png", type="cairo")
+# tau_melt = data.frame(iter=seq(1, N_keep), value=tau)
+tau_melt = reshape2::melt(tau2)
+colnames(tau_melt) = c('iter', 'taxon', 'value')
+ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxon)))
+ggsave(paste0("figures/trace_tau_", run, ".png"), device="png", type="cairo")
 
 # theta
-theta_melt = melt(theta)
+theta_melt = reshape2::melt(theta)
 colnames(theta_melt) = c('iter', 'taxon', 'number', 'value')
 
 ggplot(data=theta_melt) + 
   geom_line(aes(x=iter, y=exp(value), color=factor(taxon))) +
   theme_bw() +
   facet_grid(number~., scales="free_y")
-ggsave(paste0("../figs/polya-gamma/trace_theta_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/trace_theta_", run, ".png"), device="png", type="cairo")
 
 # mu
-mu_melt = melt(beta)
+mu_melt = reshape2::melt(beta)
 colnames(mu_melt) = c('iter', 'taxon', 'value')
 mu_melt$taxon = taxa[mu_melt$taxon]
 
 ggplot(data=mu_melt) + 
   geom_line(aes(x=iter, y=value, color=taxon)) +
   theme_bw()
-#ggsave(paste0("../figs/trace_mu_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/trace_mu_", run, ".png"), device="png", type="cairo")
 
 ###############################################################################################################################
 ## maps
@@ -177,10 +177,10 @@ pi_mean = apply(pis, c(1,2), mean, na.rm=TRUE)
 colnames(pi_mean) = taxa.keep
 
 preds = data.frame(locs_pollen, pi_mean)
-preds_melt = melt(preds, id.vars=c('x', 'y'))
+preds_melt = reshape2::melt(preds, id.vars=c('x', 'y'))
 
 props = y/rowSums(y)
-dat_melt = melt(data.frame(locs_pollen, props), id.vars=c('x', 'y'))
+dat_melt = reshape2::melt(data.frame(locs_pollen, props), id.vars=c('x', 'y'))
 
 all_melt = rbind(data.frame(dat_melt, type="data"), 
                  data.frame(preds_melt, type="preds"))
@@ -235,8 +235,7 @@ ggplot() +
         legend.text = element_text(size = 14),
         plot.title = element_blank()) +
   coord_equal()
-ggsave(paste0("../figs/all_binned_tiled_", run, ".png"), device="png", type="cairo")
-
+ggsave(paste0("figures/all_binned_tiled_", run, ".png"), device="png", type="cairo")
 
 ###############################################################################################################################
 ## observed versus predicted
@@ -253,4 +252,4 @@ ggplot(data=foo) +
   ylab("Predicted proportions") +
   geom_abline(intercept=0, slope=1) + 
   facet_wrap(~variable)
-ggsave(paste0("../figs/props_obs_vs_preds_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/props_obs_vs_preds_", run, ".png"), device="png", type="cairo")

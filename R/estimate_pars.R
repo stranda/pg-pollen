@@ -1,4 +1,3 @@
-
 library(raster)
 library(geosphere)
 library(tidyverse)
@@ -20,12 +19,16 @@ library(pgR)
 #
 # after loading pgR, make sure to source "default-inits.R" and "pgSPLM.R"
 #
+source('pgR/pgSPLM.R')
+source('pgR/default-inits.R')
 
-run='pgSPLM_test'
+run='pgSPLM_ABI'
 
 #### DATA PREP ####
-dat <- readRDS("../data/12taxa_dat.RDS")
-locs_grid <- readRDS('../polya-gamma/data/grid.RDS')
+dat = readRDS('data/12taxa_pollen_dat_v1.0.RDS')
+# locs = data.frame(dat[,c('x', 'y')])
+
+locs_grid = readRDS('data/grid.RDS')
 
 ##### WRITING THE MODEL #####
 K <- 200
@@ -41,8 +44,8 @@ closest.cell <- apply(D_inter, 2, function(x) which.min(x))
 dat.mod <- data.frame(closest=closest.cell, dat)
 dat.merged <- as.data.table(dat.mod[, !(colnames(dat.mod) %in% c('x', 'y'))])[, lapply(.SD, sum, na.rm=TRUE), 
                                                                              by <- list(closest)]
-locs <- locs_grid[dat.merged$closest,]
-taxa.keep <- as.vector(colnames(dat.merged)[!(colnames(dat.merged) %in% c('closest'))])
+locs <- locs_grid[dat.merged$by,]
+taxa.keep <- as.vector(colnames(dat.merged)[!(colnames(dat.merged) %in% c('by'))])
 y <- as.data.frame(dat.merged[,..taxa.keep])
 
 
@@ -89,31 +92,46 @@ inits <- default_inits_pgSPLM(y,
                               priors, 
                               corr_fun = "matern", 
                               shared_theta=FALSE, 
-                              shared_tau=TRUE)
+                              shared_tau=FALSE)
 
 # XXX: need this to work around undefined variable in pgSPLM
 d <- ncol(y)
 Y = as.matrix(y)
 X = as.matrix(X)
 locs = as.matrix(locs_scaled)
-n_cores = 8L
+n_cores = 3L
 shared_covariance_params = FALSE
 shared_variance_params   = TRUE
 
-out <- pgSPLM(Y = Y, 
-              X = X, 
-              locs = locs, 
-              params, 
-              priors, 
-              n_cores = 6L,
+out <- pgSPLM(Y = Y,
+              X = X,
+              locs = locs,
+              params,
+              priors,
+              n_cores = n_cores,
               corr_fun = "matern",
               shared_theta = FALSE,
-              shared_tau = TRUE,
+              shared_tau = FALSE,
               verbose=TRUE)
 
-saveRDS(out, paste0('polya-gamma-posts_pgR_', run,'.RDS'))
+# out <- pgSPLM(Y = Y, 
+#               X = X, 
+#               locs = locs, 
+#               params, 
+#               priors, 
+#               n_cores = n_cores,
+#               corr_fun = "matern",
+#               shared_covariance_params = FALSE,
+#               # shared_theta = FALSE,
+#               # shared_tau = FALSE,
+#               verbose=TRUE)
+
+dir.create(file.path('output'), showWarnings = FALSE)
+
+saveRDS(out, paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
 
 dat <- list(y = y,
+            X = X, 
            locs = locs_scaled,
            rescale = rescale)
-saveRDS(dat, paste0('polya-gamma-dat_pgR_', run,'.RDS'))
+saveRDS(dat, paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
