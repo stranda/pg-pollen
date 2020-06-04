@@ -82,9 +82,8 @@ priors$sd_range    = 0.2
 inits <- default_inits_pgSPLM(y, 
                               X, 
                               priors, 
-                              corr_fun = "matern")#, 
-                              # shared_theta=FALSE, 
-                              # shared_tau=FALSE)
+                              corr_fun = "matern", 
+                              shared_covariance_params = FALSE)
 
 # XXX: need this to work around undefined variable in pgSPLM
 d <- ncol(y)
@@ -92,8 +91,6 @@ Y = as.matrix(y)
 X = as.matrix(X)
 locs = as.matrix(locs_scaled)
 n_cores = 3L
-shared_covariance_params = FALSE
-shared_variance_params   = TRUE
 
 out <- pgSPLM(Y = Y,
               X = X,
@@ -102,8 +99,7 @@ out <- pgSPLM(Y = Y,
               priors,
               n_cores = n_cores,
               corr_fun = "matern",
-              # shared_theta = FALSE,
-              # shared_tau = FALSE,
+              shared_covariance_params = FALSE,
               verbose=TRUE)
 
 # out <- pgSPLM(Y = Y, 
