@@ -16,18 +16,10 @@ library(dplyr)
 library(data.table)
 library(pgR)
 
-#
-# after loading pgR, make sure to source "default-inits.R" and "pgSPLM.R"
-#
-source('pgR/pgSPLM.R')
-source('pgR/default-inits.R')
-
 run='pgSPLM_ABI'
 
 #### DATA PREP ####
 dat = readRDS('data/12taxa_pollen_dat_v1.0.RDS')
-# locs = data.frame(dat[,c('x', 'y')])
-
 locs_grid = readRDS('data/grid.RDS')
 
 ##### WRITING THE MODEL #####
@@ -90,9 +82,9 @@ priors$sd_range    = 0.2
 inits <- default_inits_pgSPLM(y, 
                               X, 
                               priors, 
-                              corr_fun = "matern", 
-                              shared_theta=FALSE, 
-                              shared_tau=FALSE)
+                              corr_fun = "matern")#, 
+                              # shared_theta=FALSE, 
+                              # shared_tau=FALSE)
 
 # XXX: need this to work around undefined variable in pgSPLM
 d <- ncol(y)
@@ -110,8 +102,8 @@ out <- pgSPLM(Y = Y,
               priors,
               n_cores = n_cores,
               corr_fun = "matern",
-              shared_theta = FALSE,
-              shared_tau = FALSE,
+              # shared_theta = FALSE,
+              # shared_tau = FALSE,
               verbose=TRUE)
 
 # out <- pgSPLM(Y = Y, 
