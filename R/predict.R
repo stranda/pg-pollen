@@ -1,5 +1,4 @@
 library(pgR)
-source('pgR/predict-pgSPLM.R')
 
 out = readRDS(paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
 dat = readRDS( paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
@@ -14,14 +13,6 @@ y = as.data.frame(dat$y[,taxa.keep])
 X = dat$X
 N_cores = nrow(locs_pollen)
 
-# 
-# pol_box <- bbox_tran(locs_pollen, '~ x + y',
-#                      proj_out,
-#                      proj_out)
-# xlim = c(pol_box[1]-24000, pol_box[3]+24000)
-# ylim = c(pol_box[2]-24000, pol_box[4]+24000)
-
-
 #### DISTANCE MATRICES ####
 D_pollen <- fields::rdist(locs_pollen/rescale)# N_cores x N_cores
 any(D_pollen == 0, na.rm = TRUE)   # check if there are off-diagonal zeros
@@ -29,15 +20,11 @@ D_pollen <- ifelse(D_pollen == 0, 0.007, D_pollen)  # remove them
 diag(D_pollen) <- 0
 
 locs_grid = readRDS('data/grid.RDS')
-
-
-
-
 X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
-
 locs = locs_pollen/rescale
 locs_pred = locs_grid/rescale
 
+#### MAKE PREDICTIONS ####
 preds = predict_pgSPLM(
   out,
   X,
@@ -45,13 +32,12 @@ preds = predict_pgSPLM(
   locs = locs,
   locs_pred = locs_pred,
   corr_fun="matern",
-  # shared_covariance_params,
-  shared_tau = TRUE,
-  shared_theta = FALSE,
-  diag_adjust = 1.e-8,
+  shared_covariance_params = FALSE,
+  # diag_adjust = 1.e-8,
   n_cores = 1L,
   progress = TRUE
 )
+saveRDS(preds, paste0('output/polya-gamma-preds_pgR_', run,'.RDS'))
 
 pi_mean = apply(preds$pi, c(2,3), mean, na.rm=TRUE)
 colnames(pi_mean) = taxa.keep

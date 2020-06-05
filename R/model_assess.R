@@ -11,8 +11,8 @@ run='pgSPLM_ABI'
 
 # dir.create(file.path('figures'), showWarnings = FALSE)
 
+# get bounding box
 bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
-  
   sp::coordinates(x) <- formula(coord_formula)
   sp::proj4string(x) <- sp::CRS(from)
   bbox <- as.vector(sp::bbox(sp::spTransform(x, CRSobj = sp::CRS(to))))
@@ -47,7 +47,6 @@ names(locs_pollen) <- c("x", "y")
 taxa.keep =  as.vector(colnames(dat$y))#[!(colnames(dat) %in% c('x', 'y'))])
 y = as.data.frame(dat$y[,taxa.keep])
 N_cores = nrow(locs_pollen)
-
 
 pol_box <- bbox_tran(locs_pollen, '~ x + y',
                      proj_out,
@@ -110,7 +109,6 @@ ggsave(paste0("figures/covariance_vs_distance_", run, ".pdf"))#, device="pdf", t
 ###############################################################################################################################
 
 # tau
-# tau_melt = data.frame(iter=seq(1, N_keep), value=tau)
 tau_melt = reshape2::melt(tau2)
 colnames(tau_melt) = c('iter', 'taxon', 'value')
 ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxon)))
@@ -185,7 +183,6 @@ all_melt$value_binned = cut(all_melt$value, breaks, include.lowest=TRUE, labels=
 breaklabels = apply(cbind(breaks[1:(length(breaks)-1)], breaks[2:length(breaks)]), 1, 
                     function(r) { sprintf("%0.2f - %0.2f", r[1], r[2]) })
 
-
 ggplot() + 
   geom_point(data=all_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) + 
   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
@@ -207,7 +204,6 @@ ggplot() +
         plot.title = element_blank()) +
   coord_equal()
 ggsave(paste0("../figs/all_binned_", run, ".png"), device="png", type="cairo")
-
 
 ggplot() + 
   geom_tile(data=all_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) + 

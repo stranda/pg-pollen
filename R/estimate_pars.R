@@ -102,20 +102,7 @@ out <- pgSPLM(Y = Y,
               shared_covariance_params = FALSE,
               verbose=TRUE)
 
-# out <- pgSPLM(Y = Y, 
-#               X = X, 
-#               locs = locs, 
-#               params, 
-#               priors, 
-#               n_cores = n_cores,
-#               corr_fun = "matern",
-#               shared_covariance_params = FALSE,
-#               # shared_theta = FALSE,
-#               # shared_tau = FALSE,
-#               verbose=TRUE)
-
 dir.create(file.path('output'), showWarnings = FALSE)
-
 saveRDS(out, paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
 
 dat <- list(y = y,
