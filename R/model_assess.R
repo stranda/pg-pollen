@@ -7,15 +7,9 @@ library(rgdal)
 library(raster)
 library(fields)
 
-# run='pgSPLM_vary-both'
-# run='pgSPLM_vary-both-tmp'
-# run='pgSPLM_vary-both-tmp-squared'
-# 
-# run = "pgSPLM_vary-both-tmp-sqrt"
-
 run='pgSPLM_ABI'
 
-dir.create(file.path('figures'), showWarnings = FALSE)
+# dir.create(file.path('figures'), showWarnings = FALSE)
 
 bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
   
@@ -75,12 +69,12 @@ J = dim(out$eta)[3] + 1
 burn = 0
 N_keep = N_iter-burn#+1
 
-tau2   = out$tau2[burn:N_iter,]
+tau2  = out$tau2[burn:N_iter,]
 theta = out$theta[burn:N_iter,,]
-omega = out$omega[burn:N_iter,,]
+# omega = out$omega[burn:N_iter,,]
 eta   = out$eta[burn:N_iter,,]
 # mu    = out$mu[burn:N_iter,,]
-beta    = out$beta[burn:N_iter,,]
+beta  = out$beta[burn:N_iter,,]
 
 ## calculate the Matern correlation using parameters theta on the log scale
 correlation_function <- function(D, theta) {
@@ -212,7 +206,7 @@ ggplot() +
         legend.text = element_text(size = 14),
         plot.title = element_blank()) +
   coord_equal()
-#ggsave(paste0("../figs/all_binned_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("../figs/all_binned_", run, ".png"), device="png", type="cairo")
 
 
 ggplot() + 
