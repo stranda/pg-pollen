@@ -7,7 +7,7 @@ library(rgdal)
 library(raster)
 library(fields)
 
-run='pgSPLM_ABI'
+run='pgR-test'
 
 # dir.create(file.path('figures'), showWarnings = FALSE)
 

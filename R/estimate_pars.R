@@ -14,9 +14,10 @@ library(fields)
 library(geoR)
 library(dplyr)
 library(data.table)
+# install.packages("/home/adawson/Documents/projects/pgR", repos=NULL, type="source")
 library(pgR)
 
-run='pgSPLM_ABI'
+run='pgR-test'
 
 #### DATA PREP ####
 dat = readRDS('data/12taxa_pollen_dat_v1.0.RDS')
@@ -73,17 +74,28 @@ priors <- default_priors_pgSPLM(y, X)
 
 # mu_sigma_prop    = 1
 priors$mean_nu     = -0.9
-priors$sd_nu       = 0.005
+priors$sd_nu       = sqrt(0.005)
 priors$mean_range  = 4.6
-priors$sd_range    = 0.2
+priors$sd_range    = sqrt(0.2)
 #priors$alpha_tau  = 0.5
 #priors$beta_tau   = 10
 
-inits <- default_inits_pgSPLM(y, 
-                              X, 
-                              priors, 
-                              corr_fun = "matern", 
-                              shared_covariance_params = FALSE)
+# inits <- default_inits_pgSPLM(y, 
+#                               X, 
+#                               priors, 
+#                               corr_fun = "matern", 
+#                               shared_covariance_params = FALSE)
+
+J <- ncol(y)
+theta_mean <- c(priors$mean_range, priors$mean_nu)
+theta_var  <- diag(c(priors$sd_range, priors$sd_nu)^2)
+
+
+inits <- list(
+  beta  = t(mvnfast::rmvn(J-1, priors$mu_beta, priors$Sigma_beta)),
+  tau2  = 1 / stats::rgamma(J-1, priors$alpha_tau, priors$beta_tau),
+  theta = mvnfast::rmvn(J-1, theta_mean, theta_var)
+)
 
 # XXX: need this to work around undefined variable in pgSPLM
 d <- ncol(y)
@@ -100,6 +112,7 @@ out <- pgSPLM(Y = Y,
               n_cores = n_cores,
               corr_fun = "matern",
               shared_covariance_params = FALSE,
+              inits = inits,
               verbose=TRUE)
 
 dir.create(file.path('output'), showWarnings = FALSE)

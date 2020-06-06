@@ -1,7 +1,26 @@
 library(pgR)
 
+run='pgR-test'
+
 out = readRDS(paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
 dat = readRDS( paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
+
+#### READ MAP DATA ####
+# getting data ready
+proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
++lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+
+# WGS84
+proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
++towgs84=0,0,0"
+
+na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
+na_shp <- sp::spTransform(na_shp, proj_out)
+cont_shp <- subset(na_shp,
+                   (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
+lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
+lake_shp <- sp::spTransform(lake_shp, proj_out)
+
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -84,22 +103,20 @@ ggplot() +
   geom_tile(data=subset(all_melt, type=="preds"), aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) + 
   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
   scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
-  # scale_colour_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
-  # scale_fill_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
   facet_wrap(.~variable) + 
-  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
+  # geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
+  # geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
   scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  theme_classic() +
-  theme(axis.ticks = element_blank(),
-        axis.text = element_blank(),
-        axis.title = element_blank(),
-        line = element_blank(),
-        legend.title = element_text(size = 16),
-        legend.text = element_text(size = 14),
-        plot.title = element_blank()) +
-  coord_equal()
+  # scale_x_continuous(limits = xlim) +
+  # theme_classic() +
+  # theme(axis.ticks = element_blank(),
+  #       axis.text = element_blank(),
+  #       axis.title = element_blank(),
+  #       line = element_blank(),
+  #       legend.title = element_text(size = 16),
+  #       legend.text = element_text(size = 14),
+  #       plot.title = element_blank()) +
+  # coord_equal()
 ggsave(paste0("figures/preds_binned_tiled_", run, ".png"), device="png", type="cairo")
 
 # 
