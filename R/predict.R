@@ -43,6 +43,20 @@ X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
 locs = locs_pollen/rescale
 locs_pred = locs_grid/rescale
 
+bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
+  
+  sp::coordinates(x) <- formula(coord_formula)
+  sp::proj4string(x) <- sp::CRS(from)
+  bbox <- as.vector(sp::bbox(sp::spTransform(x, CRSobj = sp::CRS(to))))
+  return(bbox)
+}
+
+grid_box <- bbox_tran(locs_grid, '~ x + y',
+                     proj_out,
+                     proj_out)
+xlim = c(grid_box[1], grid_box[3])
+ylim = c(grid_box[2], grid_box[4])
+
 #### MAKE PREDICTIONS ####
 preds = predict_pgSPLM(
   out,
@@ -104,19 +118,19 @@ ggplot() +
   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
   scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
   facet_wrap(.~variable) + 
-  # geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-  # geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
+  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
+  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
   scale_y_continuous(limits = ylim) +
-  # scale_x_continuous(limits = xlim) +
-  # theme_classic() +
-  # theme(axis.ticks = element_blank(),
-  #       axis.text = element_blank(),
-  #       axis.title = element_blank(),
-  #       line = element_blank(),
-  #       legend.title = element_text(size = 16),
-  #       legend.text = element_text(size = 14),
-  #       plot.title = element_blank()) +
-  # coord_equal()
+  scale_x_continuous(limits = xlim) +
+  theme_classic() +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        line = element_blank(),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14),
+        plot.title = element_blank()) +
+  coord_equal()
 ggsave(paste0("figures/preds_binned_tiled_", run, ".png"), device="png", type="cairo")
 
 # 
