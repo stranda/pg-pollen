@@ -86,22 +86,21 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             xlim = c(long_west, long_east),
             ylim = c(lat_lo, lat_hi))
 
-
 # convert projection to proj_out
-sp::coordinates(compiled.cores) <- ~long+lat
-sp::proj4string(compiled.cores) <- sp::CRS('+init=epsg:4326')
-albers <- sp::spTransform(compiled.cores, proj_out)
+sp::coordinates(compiled.cores.sub) <- ~long+lat
+sp::proj4string(compiled.cores.sub) <- sp::CRS('+init=epsg:4326')
+albers <- sp::spTransform(compiled.cores.sub, proj_out)
 xy = data.frame(coordinates(albers))
 colnames(xy) = c('x', 'y')
 
 # construct data frame with re-projected coordinates
-compiled.cores = data.frame(xy, compiled.cores)
-compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
+compiled.cores.sub = data.frame(xy, compiled.cores.sub)
+compiled.cores.sub = compiled.cores.sub[,which(colnames(compiled.cores.sub)!= 'optional')]
 
 # 
-compiled.counts = compiled.cores[,13:ncol(compiled.cores)]
-compiled.props  = compiled.cores[,13:ncol(compiled.cores)]/rowSums(compiled.cores[,13:ncol(compiled.cores)])
-compiled.locs   = compiled.cores[,c('x', 'y')]
+compiled.counts = compiled.cores.sub[,15:ncol(compiled.cores.sub)]
+compiled.props  = compiled.cores.sub[,15:ncol(compiled.cores.sub)]/rowSums(compiled.cores.sub[,15:ncol(compiled.cores.sub)])
+compiled.locs   = compiled.cores.sub[,c('x', 'y')]
 
 # extract pollen data from specified taxa
 taxa.keep = c('Acer', 'Alnus','Betula', 'Cyperaceae', 'Fagus', 'Ostrya.Carpinus', 
