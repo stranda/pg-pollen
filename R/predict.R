@@ -1,7 +1,26 @@
 library(pgR)
 
+run='pgR-test'
+
 out = readRDS(paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
 dat = readRDS( paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
+
+#### READ MAP DATA ####
+# getting data ready
+proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
++lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+
+# WGS84
+proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
++towgs84=0,0,0"
+
+na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
+na_shp <- sp::spTransform(na_shp, proj_out)
+cont_shp <- subset(na_shp,
+                   (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
+lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
+lake_shp <- sp::spTransform(lake_shp, proj_out)
+
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -23,6 +42,20 @@ locs_grid = readRDS('data/grid.RDS')
 X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
 locs = locs_pollen/rescale
 locs_pred = locs_grid/rescale
+
+bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
+  
+  sp::coordinates(x) <- formula(coord_formula)
+  sp::proj4string(x) <- sp::CRS(from)
+  bbox <- as.vector(sp::bbox(sp::spTransform(x, CRSobj = sp::CRS(to))))
+  return(bbox)
+}
+
+grid_box <- bbox_tran(locs_grid, '~ x + y',
+                     proj_out,
+                     proj_out)
+xlim = c(grid_box[1], grid_box[3])
+ylim = c(grid_box[2], grid_box[4])
 
 #### MAKE PREDICTIONS ####
 preds = predict_pgSPLM(
@@ -84,8 +117,6 @@ ggplot() +
   geom_tile(data=subset(all_melt, type=="preds"), aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) + 
   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
   scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
-  # scale_colour_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
-  # scale_fill_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
   facet_wrap(.~variable) + 
   geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
