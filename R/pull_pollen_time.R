@@ -1,11 +1,4 @@
 
-# NEXT STEPS: create 3D array dataframe so you can test temporal addition to new model
-# but this code aggregates counts by site (across all years! rather than subsetting
-# for using 'modern' counts)
-# So figure out where to stop using old code and where to start writing new code
-# This time, after calibration, aggregate by site and time period
-# Start with a few time chunks (0-200, 200-400, 400-600 YBP)
-
 library(neotoma)
 library(analogue)
 library(Bchron)
@@ -115,12 +108,7 @@ taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
 # remove sites with no pollen counts (BELOW CODE ISN'T WORKING)
-# tree.cores <- tree.cores[rowSums(tree.cores[,13:ncol(tree.cores)] > 0, na.rm = TRUE), ]
-
-
-
-tree.cores[,13:35] <- ifelse(is.na(tree.cores[,13:35]), 0, tree.cores[,13:35])
-
+tree.cores[,13:35]=apply(tree.cores[,13:35], c(1,2), function(x) if (is.na(x)){x=0}else{x})
 
 # standardize pollen counts so every site has same total # pollen grains across taxa
 # (only need to do this if you're analyzing a subset of all taxa in dataset)
@@ -128,14 +116,20 @@ stand.cores <- tree.cores
 stand.cores[ ,13:ncol(stand.cores)] <- t(apply(stand.cores[ ,13:ncol(stand.cores)],
                                          1,
                                          function(x) x/sum(x, na.rm=TRUE)*500))
+
+stand.cores[ ,13:ncol(stand.cores)] <- t(apply(stand.cores[ ,13:ncol(stand.cores)],
+                                               1,
+                                               function(x) if (sum(x)==0) {x} else {x/sum(x, na.rm=TRUE)*500}))
+
 # check your work
 all(round(rowSums(stand.cores[, 13:ncol(stand.cores)], na.rm=TRUE)) == 500) 
 
 # create time chunks and add to dataframe
-dat.cut <- cut(stand.cores$age, breaks = c(min(stand.cores$age, na.rm = TRUE), seq(1000, 21000, by = 1000)),
-               labels = FALSE)
-stand.cores$cut <- dat.cut
-stand.cores <- stand.cores[!is.na(stand.cores$cut),]
+# dat.cut <- cut(stand.cores$age, breaks = c(min(stand.cores$age, na.rm = TRUE), seq(1000, 21000, by = 1000)),
+#                labels = FALSE)
+# stand.cores$cut <- dat.cut
+# stand.cores <- stand.cores[!is.na(stand.cores$cut),]
+
 
 
 
@@ -149,29 +143,36 @@ test <- stand.cores
 test$cut <- test.cut
 test <- test[!is.na(test$cut),]
 
+# assign unique ID to each distinct x, y coordinate
+xyid <- test[,c('x','y')] %>% distinct()
+xyid$id <- as.character(seq(1, nrow(xyid), by = 1))
+
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
 time <- split(test, f = test$cut)
 # time <- lapply(time, "[", c(1,2,4, 13:(ncol(test)-1)))  # USE FOR NON-TEST DATASET
 # (below, for testing partial dataset)
-time <- lapply(time, "[", c('x','y','Acer','Betula','Ostrya.Carpinus','Ulmus'))
+time <- lapply(time, "[", c('x','y', 'Acer','Betula','Ostrya.Carpinus','Ulmus'))
 
-# remove sites that contain NA or 0 pollen counts for each taxon/time chunk
+# sum pollen counts by time chunk/site
 time_sum <- list()
 for(i in 1:3){
-    time_sum[[i]] <- time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
+  time_sum[[i]] <- time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
+  time_sum[[i]] <- ungroup(time_sum[[i]])
 }
 
-# check to see if any sites have 0 pollen counts; if so, remove those sites from the data
-# any(rowSums(time_sum[[1]][,3:6]) == 0)
-
-# separate pollen counts from locations
-counts <- list()
-locs <- list()
+# add unique x, y coordinate identifier to each dataframe; merge so that all 
+# dataframes have the same # rows (nrows in xyid object)
 for(i in 1:3){
-counts[[i]] <- time_sum[[i]][,3:6]
-locs[[i]] <- time_sum[[i]][,c('x', 'y')]
+  time_sum[[i]] <- left_join(xyid, time_sum[[i]], by = c('x','y'))
 }
 
+# change NAs to zeros
+for(i in 1:3){
+  time_sum[[i]][,c(4:7)] <- apply(time_sum[[i]][,c(4:7)], c(1,2), 
+                                  function(x) 
+                                    if (is.na(x)){x=0}
+                                  else{x})
+}
 
 # extract pollen data from specified taxa
 # taxa.keep = c('Acer', 'Alnus','Betula', 'Cyperaceae', 'Fagus', 'Ostrya.Carpinus', 
@@ -184,15 +185,19 @@ locs[[i]] <- time_sum[[i]][,c('x', 'y')]
 # compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)], 
 #                                  Other = rowSums(compiled.other, na.rm=TRUE))
 
-# calculate proportion from pollen counts
+# use rounding to get integer counts
+counts <- time_sum
+for(i in 1:3){
+  counts[[i]][,c(4:7)] <- round(counts[[i]][,c(4:7)])
+}
 
-props <- counts[[i]]/rowSums(counts[[i]])
+# extract site coordinates
+locs <- counts[[1]][,c('x','y')]
 
+# extract pollen counts from coordinates and convert list to array
+counts <- lapply(counts, "[", c('Acer','Betula','Ostrya.Carpinus','Ulmus'))
+counts <- lapply(counts, as.matrix)
+counts2 <- array(counts, dim = c(318, 4, 3))
 
-counts.locs[[i]] <- data.frame(locs[[i]], counts[[i]])
-
-dat = as.data.table(compiled.counts.locs)[, lapply(.SD, sum, na.rm=TRUE), by = list(x, y)]
-dat[,3:ncol(dat)] = round(dat[,3:ncol(dat)])
-N_taxa = ncol(compiled.counts.sub)
-
-saveRDS(dat, paste0('data/', N_taxa, 'taxa_pollen_dat_v', version, '.RDS'))
+saveRDS(counts, paste0('data/', 'pollen_dat_v', version, '.RDS'))
+saveRDS(locs, paste0('data/', 'pollen_locs_v', version, '.RDS'))
