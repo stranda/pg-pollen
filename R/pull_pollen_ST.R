@@ -5,21 +5,37 @@ library(Bchron)
 library(ggplot2)
 library(data.table)
 library(sp)
+library(dplyr)
+library(raster)
 
+# setwd('C:/Users/abrow/Documents/pg-pollen')
+
+# READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
 # USA Contiguous albers equal area
 proj_out <- '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 
 +ellps=GRS80 +datum=NAD83 +units=m +no_defs'
 
+# Get raster masks and spatial domain you want to use
+# (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
+stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
+
+# Adam's spatial domain
+coords <- data.frame(x = c(stack@extent@xmin,stack@extent@xmax),
+                     y = c(stack@extent@ymin,stack@extent@ymax))
+sp::coordinates(coords) <- ~x + y
+sp::proj4string(coords) <- CRS(proj_out)
+coords <- sp::spTransform(coords, CRS("+init=epsg:4326"))
+
 # limits
-lat_hi  = 49
-lat_lo  = 44
-long_west = -100
-long_east = -70
+lat_hi  = coords@coords[2,2]
+lat_lo  = coords@coords[1,2]
+long_west = coords@coords[1,1]
+long_east = coords@coords[2,1]
 
 # version
-version = 'time_1.0'
+version = 'Oct12'
 
-# get datasets withing bounded region from NEOTOMA
+# DOWNLOAD DATA withing bounded region from NEOTOMA
 all.datasets <- get_dataset(loc = c(long_west, lat_lo, long_east, lat_hi),
                             datasettype = "pollen")
 
@@ -49,6 +65,14 @@ if (file.exists("data/all.downloads.RDS")) {
   saveRDS(all.downloads, "data/all.downloads.RDS")
 }
 
+# are there any age NAs?
+names <- names(all.cores)
+test <- lapply(names, function(x) anyNA(all.cores$x$chronologies$`palEON-STEPPS`))
+test <- data.frame(test)
+any(test == TRUE)
+test <- lapply(names, function(x) anyNA(all.cores$x$chronologies$`NAPD 1`))
+test <- data.frame(test)
+any(test == TRUE)
 
 ####
 # START HERE IF YOU ALREADY HAVE POLLEN DATA DOWNLOADED
@@ -67,6 +91,7 @@ radio.years <- (compiled.cores$date.type %in% "Radiocarbon years BP") &
   (compiled.cores$age > 71 ) &
   (compiled.cores$age < 46401)
 sryears <- sum(radio.years, na.rm = TRUE)
+
 # BChronCalibrate is in the BChron package:
 calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
                               ageSds = rep(100, sryears),
@@ -107,8 +132,9 @@ compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
 taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
-# remove sites with no pollen counts (BELOW CODE ISN'T WORKING)
-tree.cores[,13:35]=apply(tree.cores[,13:35], c(1,2), function(x) if (is.na(x)){x=0}else{x})
+# remove sites with no pollen counts (IS THIS RIGHT????)
+tree.cores[,13:35]=apply(tree.cores[,13:35], MARGIN = c(1,2), 
+                         function(x) if (is.na(x)){x=0}else{x})
 
 # standardize pollen counts so every site has same total # pollen grains across taxa
 # (only need to do this if you're analyzing a subset of all taxa in dataset)
@@ -122,7 +148,7 @@ stand.cores <- tree.cores
 #                                                function(x) if (sum(x)==0) {x} else {x/sum(x, na.rm=TRUE)*500}))
 
 # check your work
-all(round(rowSums(stand.cores[, 13:ncol(stand.cores)], na.rm=TRUE)) == 500) 
+# all(round(rowSums(stand.cores[, 13:ncol(stand.cores)], na.rm=TRUE)) == 500) 
 
 # create time chunks and add to dataframe
 # dat.cut <- cut(stand.cores$age, breaks = c(min(stand.cores$age, na.rm = TRUE), seq(1000, 21000, by = 1000)),
@@ -130,20 +156,17 @@ all(round(rowSums(stand.cores[, 13:ncol(stand.cores)], na.rm=TRUE)) == 500)
 # stand.cores$cut <- dat.cut
 # stand.cores <- stand.cores[!is.na(stand.cores$cut),]
 
-
-
-
 ####
-# TO TEST TEMPORAL MODEL, FIRST BREAK INTO A FEW SMALLER TIME CHUNKS
+# ASSIGN TIME CHUNKS
 ####
 
-time_bins = c(min(stand.cores$age, na.rm = TRUE), seq(500, 8000, by=500))
+time_bins = seq(0, 21000, by=990)
 N_times = length(time_bins)-1
 
 test.cut <- cut(stand.cores$age, 
                 breaks = time_bins)
 test <- stand.cores
-test$cut <- test.cut
+test$cut <- as.integer(test.cut)
 test <- test[!is.na(test$cut),]
 
 # assign unique ID to each distinct x, y coordinate
@@ -152,16 +175,11 @@ xyid$id <- as.character(seq(1, nrow(xyid), by = 1))
 
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
 time <- split(test, f = test$cut)
-# time <- lapply(time, "[", c(1,2,4, 13:(ncol(test)-1)))  # USE FOR NON-TEST DATASET
-# (below, for testing partial dataset)
-# time <- lapply(time, "[", c('x','y', 'Acer','Betula','Ostrya.Carpinus','Ulmus'))
 
 # extract pollen data from specified taxa
-taxa.keep = c('Acer', 'Alnus','Betula', 'Cyperaceae', 'Fagus', 'Ostrya.Carpinus',
-              'Picea', 'Pinus', 'Quercus', 'Tsuga', 'Ulmus')
+taxa.keep = c('Acer', 'Alnus','Betula', 'Cyperaceae', 'Fagus', 'Fraxinus',
+              'Ostrya.Carpinus', 'Picea', 'Pinus', 'Quercus', 'Tsuga', 'Ulmus')
 taxa.nontree = c('Other', 'Prairie.Forbs', 'Poaceae')
-
-# time <- lapply(time, "[", c('x','y', 'Acer','Betula','Ostrya.Carpinus','Ulmus'))
 
 for (i in 1:N_times){
   compiled.meta = time[[i]][,c('x', 'y')]
@@ -172,14 +190,6 @@ for (i in 1:N_times){
                                    Other = rowSums(compiled.other, na.rm=TRUE))
   time[[i]]= data.frame(compiled.meta, compiled.counts.sub)
 }
-
-# 
-# compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
-#                                            (!(colnames(compiled.counts) %in% taxa.nontree)))]
-# 
-# compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)], 
-#                                  Other = rowSums(compiled.other, na.rm=TRUE))
-
 
 # sum pollen counts by time chunk/site
 time_sum <- list()
@@ -194,15 +204,14 @@ for(i in 1:N_times){
   time_sum[[i]] <- left_join(xyid, time_sum[[i]], by = c('x','y'))
 }
 
+# DO NOT CHANGE NAS TO ZEROS! KEEP THEM AS NA
 # change NAs to zeros
-for(i in 1:N_times){
-  time_sum[[i]][,c(4:ncol(time_sum[[i]]))] <- apply(time_sum[[i]][,c(4:ncol(time_sum[[i]]))], c(1,2), 
-                                  function(x) 
-                                    if (is.na(x)){x=0}
-                                  else{x})
-}
-
-
+# for(i in 1:N_times){
+#   time_sum[[i]][,c(4:ncol(time_sum[[i]]))] <- apply(time_sum[[i]][,c(4:ncol(time_sum[[i]]))], c(1,2), 
+#                                   function(x) 
+#                                     if (is.na(x)){x=0}
+#                                   else{x})
+# }
 
 # use rounding to get integer counts
 counts <- time_sum
@@ -212,10 +221,8 @@ for(i in 1:N_times){
 
 # extract site coordinates
 locs <- counts[[1]][,c('x','y')]
-
 N_locs = nrow(locs)
 N_taxa = length(taxa.keep) + 1
-
 locs = cbind(locs, id = seq(1, N_locs))
 
 dat_array = array(0, dim = c(N_locs, N_taxa, N_times))
@@ -226,12 +233,7 @@ for (i in 1:N_times){
   }
 }
 
-
-# 
-# # extract pollen counts from coordinates and convert list to array
-# counts <- lapply(counts, "[", c('Acer','Betula','Ostrya.Carpinus','Ulmus'))
-# counts <- lapply(counts, as.matrix)
-# counts2 <- array(counts, dim = c(318, 4, 3))
+locs <- locs[,c('x','y')]
 
 saveRDS(dat_array, paste0('data/', 'pollen_dat_v', version, '.RDS'))
 saveRDS(locs, paste0('data/', 'pollen_locs_v', version, '.RDS'))
