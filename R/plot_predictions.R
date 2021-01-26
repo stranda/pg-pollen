@@ -3,8 +3,8 @@ library(ggplot2)
 library(fields)
 library(rgdal)
 
-run='ST_ESA_SHORT'
-
+run='ST_Aug'
+setwd('C:/Users/abrow/Documents/pg-pollen')
 out = readRDS(paste0('output/polya-gamma-posts_', run,'.RDS'))
 dat = readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
 
@@ -44,7 +44,7 @@ any(D_pollen == 0, na.rm = TRUE)   # check if there are off-diagonal zeros
 D_pollen <- ifelse(D_pollen == 0, 0.007, D_pollen)  # remove them
 diag(D_pollen) <- 0
 
-locs_grid = readRDS('data/grid.RDS')
+locs_grid = readRDS('data/grid_900locs_ESA.RDS')
 X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
 locs = locs_pollen/rescale
 locs_pred = locs_grid/rescale
@@ -64,7 +64,6 @@ xlim = c(grid_box[1], grid_box[3])
 ylim = c(grid_box[2], grid_box[4])
 
 preds = readRDS(paste0('output/polya-gamma-preds_', run,'.RDS'))
-
 library(raster)
 
 pred_iter = preds$pi[1,,,]
@@ -73,17 +72,75 @@ colnames(pm) = c('cell', 'taxon', 'time', 'value')
 pm$x = locs_pred[pm$cell, 'x']
 pm$y = locs_pred[pm$cell, 'y']
 
-
 taxon = 1
 t_vals = unique(pm$time)
 
 x <- stack()
 for (t in 1:length(t_vals)){
-  pm_sub = pm[which((pm$taxon==1)&(pm$time = t_vals[t])),]
-  
+  pm_sub <- pm[which((pm$taxon==taxon)&(pm$time = t_vals[t])),]
   dfr <- rasterFromXYZ(pm_sub[,c('x', 'y', 'value')]) 
   x <- stack(x, dfr)
 }
+
+
+# START HERE AS OF SEPT 2020
+# require(devtools)
+# install_github("https://github.com/adamlilith/enmSdm")
+require(enmSdm)
+require(raster)
+run='ST_Aug'
+dat <- readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
+taxa <- dat$taxa.keep
+
+# in hpcc, put all 12 raster stacks in a list
+# one stack per taxon; only values for 1st iteration for now
+# time chunks are stacked within the raster stacks
+stack_list <- readRDS('output/preds_raster_stack_Aug.RDS')
+
+# un-project coordinates before running through bv function
+# USA Contiguous albers equal area
+proj_out <- '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 
++ellps=GRS80 +datum=NAD83 +units=m +no_defs'
+
+# specify projection (IS THIS RIGHT? IS IT ALBERS?)
+for(i in 1:length(stack_list)){
+  sp::proj4string(stack_list[[i]]) <- proj_out
+}
+
+bv_list <- list()
+# run through bv function
+for(i in 1:length(stack_list)){
+  bv_list[[i]] <- bioticVelocity(stack_list[[i]])
+}
+
+# plot results
+par(mfrow = c(3, 4))
+for(i in 1:length(bv_list)){
+  plot(bv_list[[i]]$timeFrom, bv_list[[i]]$centroidVelocity, type = 'l',
+       main = taxa[i], xlab = '1,000 YBP', ylab = 'Centroid velocity (m/yr)')
+}
+
+acer <- bv_list[[1]]
+acer$centroidLat <- acer$centroidLat * 1e3
+acer$centroidLong <- acer$centroidLong * 1e3
+
+ggplot(acer) +
+  geom_point(aes(x=centroidLong, y=centroidLat, color = timeFrom), size = 4) +
+  # geom_text(aes(x=centroidLong, y=centroidLat, color = timeFrom, label = timeFrom),
+  #           size = 8) +
+  geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
+  geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
+  scale_y_continuous(limits = ylim) +
+  scale_x_continuous(limits = xlim) +
+  theme_classic() +
+  # theme(axis.ticks = element_blank(),
+  #       axis.text = element_blank(),
+  #       axis.title = element_blank(),
+  #       line = element_blank(),
+  #       legend.title = element_text(size = 16),
+  #       legend.text = element_text(size = 14),
+  #       plot.title = element_blank()) +
+  coord_equal()
 
 ###########################################################################3333
 pi_mean = apply(preds$pi, c(2,3,4), mean, na.rm=TRUE)
