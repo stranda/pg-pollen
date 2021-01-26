@@ -65,6 +65,28 @@ if (file.exists("data/all.downloads.RDS")) {
   saveRDS(all.downloads, "data/all.downloads.RDS")
 }
 
+# FIX CHRONOLOGIES THAT YIELD FUTURE AGES - adjust 'age' and 'age.type' (there are 5 of these)
+# Exception for dataset 328: use "COHMAP chron 1"
+all.downloads[['328']]$sample.meta$age <- all.downloads[['328']]$chronologies[['COHMAP chron 1']]$age
+all.downloads[['328']]$sample.meta$age.type <- all.downloads[['328']]$chronologies[['COHMAP chron 1']]$age.type
+
+# Exception for dataset 1002: use "NAPD 1"
+all.downloads[['1002']]$sample.meta$age <- all.downloads[['1002']]$chronologies[['NAPD 1']]$age
+all.downloads[['1002']]$sample.meta$age.type <- all.downloads[['1002']]$chronologies[['NAPD 1']]$age.type
+
+# Exception for dataset 1984: use "NAPD 1"
+all.downloads[['1984']]$sample.meta$age <- all.downloads[['1984']]$chronologies[['NAPD 1']]$age
+all.downloads[['1984']]$sample.meta$age.type <- all.downloads[['1984']]$chronologies[['NAPD 1']]$age.type
+
+# Exception for dataset 13051: use "Neotoma 1"
+all.downloads[['13051']]$sample.meta$age <- all.downloads[['13051']]$chronologies[['Neotoma 1']]$age
+all.downloads[['13051']]$sample.meta$age.type <- all.downloads[['13051']]$chronologies[['Neotoma 1']]$age.type
+
+# # Exception for dataset 163517: use "Neotoma 1"
+# all.downloads[['163517']]$sample.meta$age <- all.downloads[['163517']]$chronologies[['Neotoma 1']]$age
+# all.downloads[['163517']]$sample.meta$age.type <- all.downloads[['163517']]$chronologies[['Neotoma 1']]$age.type
+
+
 # are there any age NAs?
 names <- names(all.downloads)
 test <- lapply(names, function(x) anyNA(all.downloads$x$chronologies$`palEON-STEPPS`))
@@ -102,16 +124,14 @@ calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
                               calCurves = rep("intcal13", sryears))
 #  we want the weighted means from "calibrated"
 wmean.date <- function(x) sum(x$ageGrid*x$densities / sum(x$densities))
-
 compiled.cores$age[radio.years] <- sapply(calibrated, wmean.date)
-
 hist(compiled.cores$age)
 
 # visualize subsetted data
 map <- map_data("world")
 ggplot(data = data.frame(map), aes(long, lat)) + 
   geom_polygon(aes(group=group), color = "steelblue", alpha = 0.2) +
-  geom_point(data = neg_ages,
+  geom_point(data = compiled.cores,
              aes(x = long, y = lat), color = 2, size = 2) +
   xlab("Longitude West") + 
   ylab("Latitude North") +
@@ -120,6 +140,10 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             lat1 = lat_hi, 
             xlim = c(long_west, -59),
             ylim = c(lat_lo, lat_hi))
+
+# # remove pollen cores from islands far off mainland
+# remove.sites <- compiled.cores[compiled.cores$lat <= 35 & compiled.cores$long > -70,]
+# compiled.cores <- compiled.cores[!(row.names(compiled.cores) %in% row.names(remove.sites)),]
 
 # convert projection to proj
 sp::coordinates(compiled.cores) <- ~long+lat
@@ -136,19 +160,14 @@ compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
 taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
-# ASK ANDRIA ABOUT THIS CODE BELOW
 # remove sites with no tree pollen counts
 # i.e., rows that contain only zeros/NAs across all taxa
 tree.cores$sum <- apply(tree.cores[,13:35], 1, function(x) sum(x, na.rm=TRUE))
 tree.cores <- tree.cores[tree.cores$sum > 0, ]
 
 # ASSIGN TIME CHUNKS
-
 # QUESTIONS
-# WHY ARE THERE AGES LESS THAN -60? HOW DO WE BIN NEGATIVE AGES?
 # PLACE ALL NEGATIVE AGES IN SAME BIN AS TIME = 0?
-# DO WE USE ALL DATE TYPES? ARE DIFF'T DATE TYPES COMPARABLE AFTER 
-# RUNNING THE BCHRON CODE? i still don't understand this chunk of code
 # For now, just bin everything that's <0 together
 
 time_bins = c(min(tree.cores$age), seq(0, 21000, by=990))
@@ -167,7 +186,6 @@ xyid$id <- as.character(seq(1, nrow(xyid), by = 1))
 time <- split(test, f = test$cut)
 
 # QUESTION: NOW THAT WE AREN'T TESTING THE MODEL ANYMORE, SHOULD WE ADD MORE TAXA?
-# we'll need to rationalize why we used the taxa we did
 # FOR NOW, USE TAXA WITH >200,000 TOTAL POLLEN COUNT
 # extract pollen data from specified taxa
 # and combine the other tree taxa into 'other' column
