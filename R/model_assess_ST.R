@@ -7,7 +7,7 @@ library(rgdal)
 library(raster)
 library(fields)
 
-run='pgR-ST'
+run='Oct12_matern'
 
 # dir.create(file.path('figures'), showWarnings = FALSE)
 
@@ -36,16 +36,14 @@ lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj_out)
 
 #### READ IN MODEL DATA AND OUTPUT ####
-out = readRDS(paste0('output/polya-gamma-posts_pgR_', run,'.RDS'))
-dat = readRDS( paste0('output/polya-gamma-dat_pgR_', run,'.RDS'))
+out = readRDS(paste0('output/polya-gamma-posts_', run,'.RDS'))
+dat = readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
 rescale = dat$rescale
 locs_pollen <- dat$locs*rescale 
 names(locs_pollen) <- c("x", "y")
-# taxa.keep =  as.vector(colnames(dat$y))#[!(colnames(dat) %in% c('x', 'y'))])
-# y = as.data.frame(dat$y[,taxa.keep])
 taxa.keep = dat$taxa.keep
 N_cores = nrow(locs_pollen)
 
@@ -169,6 +167,8 @@ for (tt in 1:N_times){
   }
 }
 
+# GET MEAN OF PIS FOR MAPPING
+# NEXT, GET SD OF PIS FOR MAPPING UNCERTAINTY
 pi_mean = apply(pis, c(1,2,3), mean, na.rm=TRUE)
 preds_melt = reshape2::melt(pi_mean)#, id.vars=c('x', 'y'))
 colnames(preds_melt) = c('loc', 'taxon', 'time', 'value')
@@ -176,7 +176,13 @@ preds_melt$x = locs_pollen[preds_melt$loc,'x']
 preds_melt$y = locs_pollen[preds_melt$loc,'y']
 preds_melt$taxon = taxa.keep[preds_melt$taxon]
 
-props = apply(y, c(1,3), function(x) if (sum(x)==0){rep(0, length(x))} else if (sum(x)!=0){x/sum(x)})
+# calculate proportions from raw data
+y <- dat$y
+props = apply(X = y, MARGIN = c(1,3), FUN = function(x) 
+  if (is.na(sum(x))){rep(NA, length(x))}
+  else if (sum(x, na.rm = TRUE)==0){rep(0, length(x))}
+  else if (sum(x, na.rm = TRUE)!=0){x/sum(x, na.rm = TRUE)})
+
 # props = y/rowSums(y)
 # dat_melt = reshape2::melt(data.frame(locs_pollen, props), id.vars=c('x', 'y'))
 dat_melt = reshape2::melt(props)#, id.vars=c('x', 'y'))
@@ -195,18 +201,23 @@ all_melt$value_binned = cut(all_melt$value, breaks, include.lowest=TRUE, labels=
 breaklabels = apply(cbind(breaks[1:(length(breaks)-1)], breaks[2:length(breaks)]), 1, 
                     function(r) { sprintf("%0.2f - %0.2f", r[1], r[2]) })
 
-pdf(paste0("figures/all_binned_", run, "_by_time.pdf"))
-for (tt in 1:N_times){
-  sub_melt = all_melt[which(all_melt$time == tt),]
+some <- c('Picea', 'Betula', 'Fraxinus', 'Quercus')
+all_melt_plot <- all_melt[all_melt$taxon %in% some, ]
+
+
+pdf(paste0("figures/all_binned_by_time_Oct12_4taxa_4times.pdf"))
+for (tt in seq(1, N_times, by = 6)){
+  sub_melt = all_melt_plot[which(all_melt_plot$time == tt),]
   p <- ggplot() + 
-    geom_point(data=sub_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) + 
-    scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
-    scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
-    # scale_colour_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
-    # scale_fill_gradientn(colours = tim.colors(10), limits=c(0,1)) + 
-    facet_grid(taxon~type) + 
     geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
     geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
+    
+    geom_point(data=sub_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned),
+                                  alpha = 0.5)) + 
+    scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
+    scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) + 
+    facet_grid(taxon~type) + 
+    
     scale_y_continuous(limits = ylim) +
     scale_x_continuous(limits = xlim) +
     ggtitle("Time: ", tt) +
@@ -256,7 +267,7 @@ dev.off()
 ## observed versus predicted
 ###############################################################################################################################
 
-foo = merge(preds_melt, dat_melt, by=c("x", "y", "variable"))
+# foo = merge(preds_melt, dat_melt, by=c("x", "y", "variable"))
 foo = merge(preds_melt, dat_melt, by=c("x", "y", "loc", "time", "taxon"))
 
 ggplot(data=foo) +
