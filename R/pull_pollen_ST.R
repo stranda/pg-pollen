@@ -67,34 +67,31 @@ if (file.exists("data/all.downloads.RDS")) {
 
 # FIX CHRONOLOGIES THAT YIELD FUTURE AGES - adjust 'age' and 'age.type' (there are 5 of these)
 # Exception for dataset 328: use "COHMAP chron 1"
-all.downloads[['328']]$sample.meta$age <- all.downloads[['328']]$chronologies[['COHMAP chron 1']]$age
-all.downloads[['328']]$sample.meta$age.type <- all.downloads[['328']]$chronologies[['COHMAP chron 1']]$age.type
+id <- '328'
+all.downloads[[id]]$sample.meta$age <- all.downloads[[id]]$chronologies[['COHMAP chron 1']]$age
+all.downloads[[id]]$sample.meta$age.type <- all.downloads[[id]]$chronologies[['COHMAP chron 1']]$age.type
 
 # Exception for dataset 1002: use "NAPD 1"
-all.downloads[['1002']]$sample.meta$age <- all.downloads[['1002']]$chronologies[['NAPD 1']]$age
-all.downloads[['1002']]$sample.meta$age.type <- all.downloads[['1002']]$chronologies[['NAPD 1']]$age.type
+id <- '1002'
+all.downloads[[id]]$sample.meta$age <- all.downloads[[id]]$chronologies[['NAPD 1']]$age
+all.downloads[[id]]$sample.meta$age.type <- all.downloads[[id]]$chronologies[['NAPD 1']]$age.type
 
 # Exception for dataset 1984: use "NAPD 1"
-all.downloads[['1984']]$sample.meta$age <- all.downloads[['1984']]$chronologies[['NAPD 1']]$age
-all.downloads[['1984']]$sample.meta$age.type <- all.downloads[['1984']]$chronologies[['NAPD 1']]$age.type
+id <- '1984'
+all.downloads[[id]]$sample.meta$age <- all.downloads[[id]]$chronologies[['NAPD 1']]$age
+all.downloads[[id]]$sample.meta$age.type <- all.downloads[[id]]$chronologies[['NAPD 1']]$age.type
 
 # Exception for dataset 13051: use "Neotoma 1"
-all.downloads[['13051']]$sample.meta$age <- all.downloads[['13051']]$chronologies[['Neotoma 1']]$age
-all.downloads[['13051']]$sample.meta$age.type <- all.downloads[['13051']]$chronologies[['Neotoma 1']]$age.type
+id <- '13051'
+all.downloads[[id]]$sample.meta$age <- all.downloads[[id]]$chronologies[['Neotoma 1']]$age
+all.downloads[[id]]$sample.meta$age.type <- all.downloads[[id]]$chronologies[['Neotoma 1']]$age.type
 
-# # Exception for dataset 163517: use "Neotoma 1"
-# all.downloads[['163517']]$sample.meta$age <- all.downloads[['163517']]$chronologies[['Neotoma 1']]$age
-# all.downloads[['163517']]$sample.meta$age.type <- all.downloads[['163517']]$chronologies[['Neotoma 1']]$age.type
+# Exception for dataset 17404: use "Neotoma 1"
+id <- '17404'
+all.downloads[[id]]$sample.meta$age <- all.downloads[[id]]$chronologies[['Neotoma 1']]$age
+all.downloads[[id]]$sample.meta$age.type <- all.downloads[[id]]$chronologies[['Neotoma 1']]$age.type
 
 
-# are there any age NAs?
-names <- names(all.downloads)
-test <- lapply(names, function(x) anyNA(all.downloads$x$chronologies$`palEON-STEPPS`))
-test <- data.frame(test)
-any(test == TRUE)
-test <- lapply(names, function(x) anyNA(all.downloads$x$chronologies$`NAPD 1`))
-test <- data.frame(test)
-any(test == TRUE)
 
 ####
 # START HERE IF YOU ALREADY HAVE POLLEN DATA DOWNLOADED
