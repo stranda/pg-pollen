@@ -139,9 +139,13 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             xlim = c(long_west, -59),
             ylim = c(lat_lo, lat_hi))
 
-# # remove pollen cores from islands far off mainland
-# remove.sites <- compiled.cores[compiled.cores$lat <= 35 & compiled.cores$long > -70,]
-# compiled.cores <- compiled.cores[!(row.names(compiled.cores) %in% row.names(remove.sites)),]
+# remove pollen cores from isolated locations (islands, mexico)
+bermuda <- compiled.cores[compiled.cores$lat < 35 & compiled.cores$long > -70, ]
+bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
+mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
+remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
+remove.sites <- remove.sites %>% distinct()
+compiled.cores <- compiled.cores[!(row.names(compiled.cores) %in% row.names(remove.sites)),]
 
 # convert projection to proj
 sp::coordinates(compiled.cores) <- ~long+lat
