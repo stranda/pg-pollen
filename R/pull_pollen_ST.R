@@ -7,9 +7,10 @@ library(data.table)
 library(sp)
 library(dplyr)
 library(raster)
+library(mapproj)
 
-setwd('C:/Users/abrow/Documents/pg-pollen')
-version = 'Dec15'
+# setwd('C:/Users/abrow/Documents/pg-pollen')
+version = '1.0'
 
 # READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
 # USA Contiguous albers equal area
