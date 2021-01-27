@@ -57,8 +57,14 @@ ggplot(data = data.frame(map), aes(long, lat)) +
 # check if existing download contains all datasets
 if (file.exists("data/all.downloads.RDS")) {
   all.downloads.old <- readRDS("data/all.downloads.RDS")
+  if (length(names(all.downloads.old)) == length(names(all.datasets))){
   if (all(names(all.downloads.old) == names(all.datasets))){
     all.downloads <- all.downloads.old
+  }
+  } else {
+    all.downloads <- get_download(all.datasets, 
+                                  verbose = FALSE)
+    saveRDS(all.downloads, "data/all.downloads.RDS")
   }
 } else {
   all.downloads <- get_download(all.datasets, 
@@ -190,7 +196,7 @@ time <- split(test, f = test$cut)
 
 props <- tree.cores[,13:35]/rowSums(tree.cores[,13:35], na.rm = TRUE)
 
-summ <- data.frame(apply(tree.cores[,13:35], 2, function(x) sum(x, na.rm=TRUE)))
+summ <- data.frame(pollen_sum = apply(tree.cores[,13:35], 2, function(x) sum(x, na.rm=TRUE)))
 summ$gtlt <- ifelse(summ$pollen_sum<200000,"less","greater")
 taxa.keep <- rownames(summ[summ$pollen_sum >= 200000, ])
 taxa.nontree = c('Other', 'Prairie.Forbs', 'Poaceae')
