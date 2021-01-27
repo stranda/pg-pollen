@@ -2,11 +2,11 @@
 require(raster)
 require(sp)
 
-setwd('C:/Users/abrow/Documents/pg-pollen')
-version <- 'Dec15'
+# setwd('C:/Users/abrow/Documents/pg-pollen')
+version <- '1.0'
 
 # READ IN DATA
-dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
+dat <- readRDS(paste0('data/', 'pollen_locs_', version, '.RDS'))
 locs_pollen <- dat$locs
 
 # Get spatial domain and projection you want to use
@@ -47,6 +47,6 @@ lake_shp <- sp::spTransform(lake_shp, proj)
 ggplot(data = locs_grid, aes(x = x, y = y)) + 
   geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-  geom_point() +
+  geom_point(alpha=0.3) +
   coord_equal()
 
