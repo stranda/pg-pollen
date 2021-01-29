@@ -9,171 +9,119 @@ require(enmSdm)
 require(rgeos)
 require(sp)
 require(dplyr)
+require(holoSimCell)
 
 setwd('C:/Users/abrow/Documents/pg-pollen')
 version <- 'Dec15'
 
-# READ IN DATA
+#### READ IN DATA ####
 # read in raw data
 dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
 taxa <- dat$taxa.keep
-frax_num <- which(taxa == 'Fraxinus')
+# frax_num <- which(taxa == 'Fraxinus')
 
 # read in prediction grid locations
-locs_grid <- readRDS('data/grid_Oct12.RDS')
+locs_grid <- readRDS(paste0('data/grid_', version, '.RDS'))
 
-# read in predictions
-preds <- readRDS('output/Dec2020-inter_frax_pis_small.RDS')
-
-# specify projection
-proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
-+lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+# read in predictions from all simulations (ie, not summarized as mean/median)
+preds <- readRDS(paste0('output/preds_', version, '_all_taxa_n20.RDS'))
 
 
-# Get raster masks and spatial domain you want to use
-# (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
+# read raster masks (provides masks for spatial domain/resolution of genetic + ENM data)
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
 names(stack) <- 1:701
-sub <- seq(0, 701, by = 33)
+sub <- seq(1, 701, by = 33)
 stack_sub <- subset(stack, subset = paste0('X', sub))  # only want mask every 990 years
+stack_sub[stack_sub > 0.6] <- NA
 proj <- proj4string(stack)
 
-# reproject coordinates to match with ENM and genetic rasters
-sp::coordinates(locs_grid) <- ~x + y
-sp::proj4string(locs_grid) <- CRS(proj_out)
-locs_grid <- sp::spTransform(locs_grid, CRS(proj))
-locs_grid <- data.frame(locs_grid)
 
-# convert prediction array into a list of raster objects
-ntimes <- dim(preds)[3]
-
-preds_list <- list()
-for(i in 1:dim(preds)[1]){
-  preds_list[[i]] <- preds[i,,]
+#### DATA PREPARATION ####
+# convert rasterstack masks into list of rasters, reverse order of items to correspond with pollen time
+mask_list <- unstack(stack_sub)
+mask_names <- NA
+for(i in 1:n_times){
+  mask_names[i] <- names(mask_list[[i]])
+  mask_names[i] <- as.integer(substr(mask_names[i], start = 2, stop = nchar(mask_names[i]))) * 30
 }
+mask_names <- rev(mask_names)
+names(mask_list) <- mask_names
+mask_list <- rev(mask_list)
 
-preds_list <- lapply(preds_list, as.data.frame)
-preds_list <- lapply(preds_list, function(x) cbind(locs_grid, x))
+# convert prediction array to list of rasterstacks
+n_iter <- dim(preds)[1]
+n_taxa <- dim(preds)[3]
+n_times <- dim(preds)[4]
 
-pivot_fxn <- function(x) pivot_longer(x, cols = 3:ncol(x), 
-                                      names_to = 'time',
-                                      values_to = 'pred')
-preds_list <- lapply(preds_list, pivot_fxn)
-
-for(i in 1:length(preds_list)){
-  preds_list[[i]]$time <- as.integer(substr(preds_list[[i]]$time, start = 2, 
-                                  stop = nchar(preds_list[[i]]$time)))
-}
-
-preds_list2 <- preds_list
-for(i in 1:length(preds_list)){
-  preds_list2[[i]] <- split(preds_list2[[i]], f = preds_list2[[i]]$time)
-}
-
-# remove time column from all dataframes - I think this will make it easier
-# to deal with converting dfs to rasters - should only have x, y, pred columns
-for(i in 1:length(preds_list2)){
-  for(j in 1:length(ntimes)){
-    preds_list2[[i]] <- lapply(preds_list2[[i]], 
-                                    function(x) x[!(names(x) %in% c('time'))])
+# this takes about a minute to run with dimensions [20, 7221, 14, 22]
+preds_list <- rep(list(list()), n_taxa) 
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    preds_list[[i]][[j]] <- cbind(locs_grid, data.frame(preds[j,,i,]))
+    preds_list[[i]][[j]] <- pivot_longer(preds_list[[i]][[j]], cols = 3:ncol(preds_list[[i]][[j]]),
+                                         names_to = 'time', values_to = 'pred')
+    preds_list[[i]][[j]]$time <- as.integer(substr(preds_list[[i]][[j]]$time, start = 2, 
+                                                 stop = nchar(preds_list[[i]][[j]]$time)))
+    preds_list[[i]][[j]] <- split(preds_list[[i]][[j]], f = preds_list[[i]][[j]]$time)
+    preds_list[[i]][[j]] <- lapply(preds_list[[i]][[j]], function(x) { x['time'] <- NULL; x })
   }
 }
 
-# convert dfs to rasters
-rast_list <- preds_list2
-for(i in 1:length(rast_list)){
-  for(j in 1:ntimes){
-    rast_list[[i]][[j]] <- rasterFromXYZ(rast_list[[i]][[j]])
-    proj4string(rast_list[[i]][[j]]) <- proj
+# takes about 20 minutes to run with dimensions [20, 7221, 14, 22]
+rasterstack_list <- preds_list
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    for(k in 1:n_times){
+      rasterstack_list[[i]][[j]][[k]] <- rasterFromXYZ(rasterstack_list[[i]][[j]][[k]])
+      proj4string(rasterstack_list[[i]][[j]][[k]]) <- proj
+      rasterstack_list[[i]][[j]][[k]] <- resample(rasterstack_list[[i]][[j]][[k]], y = mask_list[[k]])
+      rasterstack_list[[i]][[j]][[k]] <- mask(rasterstack_list[[i]][[j]][[k]], mask = mask_list[[k]])
+    }
   }
 }
-
-# saveRDS(rast_list, 'output/frax_preds_rasters_by_iteration.RDS')
-# rast_list <- readRDS('output/frax_preds_rasters_by_iteration.RDS')
-
-\
-
-# resample rasters so they're at the correct res and extent
-# Code to use:
-# resampledPollen <- resample(pollenRaster, template)
-# resampledPollen <- calc(resampledPollen, fun=function(x) ifelse(x > 1, 1, x))
-# resampledPollen <- calc(resampledPollen, fun=function(x) ifelse(x < 0, 0, x))
-# template <- raster('data/map-data/study_region_resampled_to_genetic_demographic_simulation_resolution.tif')
-# for(i in 1:length(rast_list)){
-#   for(j in 1:ntimes){
-#     rast_list[[i]][[j]] <- resample(rast_list[[i]][[j]], template)
-#   }
-# }
-
-
-
-# FOR NOW, TO FIX EXTENT ISSUE, CROP BOTTOM OF POLLEN RASTERS TO SAME YMIN
-# VALUE AS ADAM'S STACK
-# BUT FIRST NEED TO RESAMPLE, OTHERWISE CROPPING WON'T FIX EXTENT DIFFERENCES
-
-for(i in 1:length(rast_list)){
-  for(j in 1:ntimes){
-    rast_list[[i]][[j]] <- resample(rast_list[[i]][[j]], stack_sub)
-  }
-}
-
-# e <- extent(rast_list[[1]][[1]]@extent@xmin, 
-#             rast_list[[1]][[1]]@extent@xmax, 
-#             stack_sub@extent@ymin, 
-#             rast_list[[1]][[1]]@extent@ymax)
-
-# rast_list_cr <- rast_list
-# for(i in 1:100){
-#   for(j in 1:21){
-#     rast_list_cr[[i]][[j]] <- crop(rast_list[[i]][[j]], e)
-#   }
-# }
-
-# stack_sub_cr <- crop(stack_sub, rast_list_cr[[1]][[1]])
-
-
-# mask out ocean, lakes, glaciers
-unstack <- unstack(stack_sub)
-mask_list <- rast_list
-for(i in 1:length(mask_list)){
-  for(j in 1:ntimes){
-    mask_list[[i]][[j]] <- mask(mask_list[[i]][[j]], 
-                                mask = unstack[[j]])
-  }
-}
-# STARTED AT 12:33 - 12:47
-
-# ERROR: Error in compareRaster(x, mask) : different extent
-# my rasters have different extent than Adam's rasterstack
-# 
-# might need to crop the larger one to the extent of the other, if the other is
-# actually nested
-# croppedRast <- raster::crop(oldRast, study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation)
-
 
 # convert list of rasters into raster stack
-mask_stack <- list()
-for(i in 1:length(mask_list)){
-  mask_stack[[i]] <- raster::stack(mask_list[[i]])
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    rasterstack_list[[i]][[j]] <- raster::stack(rasterstack_list[[i]][[j]])
+  }
 }
+saveRDS(rasterstack_list, 'output/preds_rasterstack_list_for_bv_calc.RDS')
 
-# saveRDS(mask_stack, 'output/frax_preds_rasterstack_by_iteration.RDS')
 
+##############################################
+## CALCULATE AND PLOT BIOTIC VELOCITIES
+##############################################
 # iterate bioticVelocity function through each iteration
-# sub <- seq(0, 701, by = 33)
-times <- sub[-1] * 30
+# sub <- seq(1, 701, by = 33)
+times <- rev(-(sub * 30))
 
-bv_list <- list()
-for(i in 1:100){
-  bv_list[[i]] <- bioticVelocity(mask_stack[[i]],
+bv_list <- replicate(n_taxa, list(replicate(n_iter, list())))
+bv_list <- replicate(n_taxa, list(replicate(n_iter, data.frame())))
+
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    bv_list[[i]][[j]] <- bioticVelocity(rasterstack_list[[i]][[j]],
                                  times = times,
                                  onlyInSharedCells = TRUE)
+  }
 }
 # 12:50 - 12:58
 
-# plot BVs with uncertainty
-require(dplyr)
-bv <- bind_rows(bv_list)
+
+# LEFT OFF HERE
+# STUCK ON ABOVE LOOP - GIVES ERROR: 
+# Error in array(x, c(length(x), 1L), if (!is.null(names(x))) list(names(x),  : 
+# length of 'dimnames' [1] not equal to array extent
+
+
+#### PLOT BVS WITH UNCERTAINTY ####
+
+bv_list2 <- bv_list
+for(i in 1:n_taxa){
+  bv_list2[[i]] <- bind_rows(bv_list[[i]])
+}
+
 bv$timeTo <- as.factor(bv$timeTo)
 
 par(mfrow = c(5,5))
@@ -188,9 +136,8 @@ ggplot(bv, aes(x = timeTo, y = centroidVelocity)) +
 
 
 ##################################
-## CALCULATING REFUGE LOCATIONS ##
+## CALCULATE REFUGE LOCATIONS
 ##################################
-require(holoSimCell)
 
 # read in 'simulated' dataframe
 sim <- raster('data/map-data/study_region_resampled_to_genetic_demographic_simulation_resolution.tif')
@@ -259,8 +206,6 @@ frax <- pivot_longer(data = frax, cols = X1:X22,
 frax$time <- substr(frax$time, start = 2, stop = nchar(frax$time))
 frax$time <- as.integer(frax$time)
 
-
-
 ggplot(data = refuge_df) +
   geom_tile(aes(x = x, y = y, fill = id_fac)) +
   scale_fill_discrete(na.value = 'white') +
@@ -282,3 +227,65 @@ ggplot(data = refuge_df) +
         legend.position = 'none') +
   coord_equal()
 
+
+
+
+
+
+# OLD CODE
+
+# CALCULATE BV USING FRAX PREDS
+bv_stack <- stack(frax_mask)
+sub <- seq(0, 701, by = 33)
+times <- sub[-1] * 30
+bv <- bioticVelocity(bv_stack, times = times) # , onlyInSharedCells = TRUE)
+saveRDS(bv, 'output/frax_bvs.RDS')
+
+# PLOTTING BVS OVER TIME
+par(mfrow = c(3,1))
+par(mar = c(4, 5, 2, 2))
+plot(bv$timeTo, bv$centroidVelocity, type = 'b', cex = 2, lwd = 2,
+     ylab = 'Centroid velocity (m/yr)', xlab = '', main = 'Fraxinus pollen biotic velocities',
+     xlim = rev(range(bv$timeTo)), cex.lab = 2, cex.axis = 2, cex.main = 2)
+grid(col = 'gray10')
+plot(bv$timeTo, bv$nsQuantVelocity_quant0p95, type = 'b', cex = 2, lwd = 2,
+     ylab = '95% quantile velocity', xlab = '', main = '',
+     xlim = rev(range(bv$timeTo)), cex.lab = 2, cex.axis = 2)
+grid(col = 'gray10')
+abline(h = 0, col = 'black', lwd = 2)
+plot(bv$timeTo, bv$nsQuantVelocity_quant0p05, type = 'b', cex = 2, lwd = 2,
+     ylab = '5% quantile velocity', xlab = 'Years before present', main = '',
+     xlim = rev(range(bv$timeTo)), cex.lab = 2, cex.axis = 2)
+grid(col = 'gray10')
+abline(h = 0, col = 'black', lwd = 2)
+# dev.off()
+
+# PLOT CENTROIDS OF FRAX RANGE OVER TIME ON MAP
+# use biotic velocity dataframe (bv)
+ggplot(data = bv) +
+  geom_point(aes(x = centroidLong, y = centroidLat, color = timeTo),
+             size = 4, alpha = 0.9) +
+  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
+  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
+  scale_y_continuous(limits = ylim) +
+  scale_x_continuous(limits = xlim) +
+  # labs(title = paste0(i, ',000 YBP'), fill = 'SDs of \nrel prop') +
+  theme_classic() +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        line = element_blank(),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14),
+        plot.title = element_text(size = 16)) +
+  coord_equal()
+
+
+
+# INSTALLING MOST RECENT VERSION OF ENMSDM
+# download zip file from repo: https://github.com/adamlilith/enmSdm/tree/master/zipTarFiles
+# might also need to update omnibus and satisfactory, also on adam's github page
+install.packages('C:/Users/abrow/Desktop/postdoc/enmSdm_0.5.2.9.zip', lib='C:/Users/abrow/Documents/R/win-library/4.0',repos = NULL)
+
+install.packages('C:/Users/abrow/Desktop/postdoc/omnibus_0.3.4.7.zip', lib='C:/Users/abrow/Documents/R/win-library/4.0',repos = NULL)
+install.packages('C:/Users/abrow/Desktop/postdoc/statisfactory_0.3.4.zip', lib='C:/Users/abrow/Documents/R/win-library/4.0',repos = NULL)
