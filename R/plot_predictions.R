@@ -1,56 +1,56 @@
-library(pgR)
-library(ggplot2)
-library(fields)
-library(rgdal)
 
-run='ST_Aug'
+require(tidyr)
+require(dplyr)
+require(ggplot2)
+require(rasterVis)
+require(fields)
+require(rgdal)
+require(raster)
+require(enmSdm)
+
 setwd('C:/Users/abrow/Documents/pg-pollen')
-out = readRDS(paste0('output/polya-gamma-posts_', run,'.RDS'))
-dat = readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
+version <- 'Dec15'
+
+################################################
+# DATA PREPARATION
+################################################
+
+#### READ POLLEN DATA AND PREDICTIONS ####
+# read raw data
+dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
+taxa <- data.frame(taxon_num = 1:14, taxon = c(dat$taxa.keep, 'Other'))
+
+# read prediction grid locations
+locs_grid <- readRDS(paste0('data/grid_', version, '.RDS'))
+
+# read mean and sds preds (or median and IQR)
+means <- readRDS(paste0('output/preds_', version, '_all_taxa_means.RDS'))
+sds <- readRDS(paste0('output/preds_', version, '_all_taxa_sds.RDS'))
+# medians <- readRDS(paste0('output/preds_', version, '_all_taxa_medians.RDS'))
+# iqrs <- readRDS(paste0('output/preds_', version, '_all_taxa_iqr.RDS'))
+
+n_times <- dim(means)[3]
+n_taxa <- dim(means)[2]
+
 
 #### READ MAP DATA ####
-# getting data ready
-proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
-+lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
-
-# WGS84
-proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
-+towgs84=0,0,0"
+# read raster masks (provides masks for spatial domain/resolution of genetic + ENM data)
+stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
+names(stack) <- 1:701
+sub <- seq(1, 701, by = 33)
+stack_sub <- subset(stack, subset = paste0('X', sub))  # only want mask every 990 years
+stack_sub[stack_sub > 0.6] <- NA
+proj <- proj4string(stack)
 
 na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
-na_shp <- sp::spTransform(na_shp, proj_out)
+na_shp <- sp::spTransform(na_shp, proj)
 cont_shp <- subset(na_shp,
                    (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
 lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
-lake_shp <- sp::spTransform(lake_shp, proj_out)
+lake_shp <- sp::spTransform(lake_shp, proj)
 
-
-# note that locations were scaled to fit the model
-# unscaling to think in meters, then will rescale again before prediction
-rescale = dat$rescale
-locs_pollen <- dat$locs*rescale 
-names(locs_pollen) <- c("x", "y")
-
-taxa.keep = dat$taxa.keep
-# taxa.keep =  as.vector(colnames(dat$y))#[!(colnames(dat) %in% c('x', 'y'))])
-# y = as.data.frame(dat$y[,taxa.keep])
-y = dat$y
-X = dat$X
-N_cores = nrow(locs_pollen)
-
-#### DISTANCE MATRICES ####
-D_pollen <- fields::rdist(locs_pollen/rescale)# N_cores x N_cores
-any(D_pollen == 0, na.rm = TRUE)   # check if there are off-diagonal zeros
-D_pollen <- ifelse(D_pollen == 0, 0.007, D_pollen)  # remove them
-diag(D_pollen) <- 0
-
-locs_grid = readRDS('data/grid_900locs_ESA.RDS')
-X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
-locs = locs_pollen/rescale
-locs_pred = locs_grid/rescale
-
+# getting bounding box to specify spatial domain when plotting
 bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
-  
   sp::coordinates(x) <- formula(coord_formula)
   sp::proj4string(x) <- sp::CRS(from)
   bbox <- as.vector(sp::bbox(sp::spTransform(x, CRSobj = sp::CRS(to))))
@@ -58,247 +58,197 @@ bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
 }
 
 grid_box <- bbox_tran(locs_grid, '~ x + y',
-                      proj_out,
-                      proj_out)
+                      proj,
+                      proj)
 xlim = c(grid_box[1], grid_box[3])
 ylim = c(grid_box[2], grid_box[4])
 
-preds = readRDS(paste0('output/polya-gamma-preds_', run,'.RDS'))
-library(raster)
 
-pred_iter = preds$pi[1,,,]
-pm = reshape2::melt(pred_iter)
-colnames(pm) = c('cell', 'taxon', 'time', 'value')
-pm$x = locs_pred[pm$cell, 'x']
-pm$y = locs_pred[pm$cell, 'y']
+#### PREPARE RAW DATAFRAMES ####
+# create list of dataframes, grouped by time period
+dat_list <- list()
+for(i in 1:n_times){
+  dat_list[[i]] <- cbind(dat$locs, data.frame(dat$y[,,i]))
+  dat_list[[i]] <- pivot_longer(dat_list[[i]], cols = 3:ncol(dat_list[[i]]),
+                                 names_to = 'taxon_num', values_to = 'count')
+  dat_list[[i]]$taxon_num <- as.integer(substr(dat_list[[i]]$taxon_num, start = 2, 
+                                                stop = nchar(dat_list[[i]]$taxon_num)))
+  dat_list[[i]] <- left_join(dat_list[[i]], taxa, by = 'taxon_num')
+  dat_list[[i]] <- dat_list[[i]] %>% dplyr::select(-taxon_num)
+}
 
-taxon = 1
-t_vals = unique(pm$time)
+# create list of taxon-specific dataframes within time-specific list items
+dat_list <- lapply(dat_list, function(x) split(x, f = x$taxon))
+for(i in 1:n_times){
+  dat_list[[i]] <- lapply(dat_list[[i]], 
+                           function(x) x[!(names(x) %in% c('taxon'))])
+}
 
-x <- stack()
-for (t in 1:length(t_vals)){
-  pm_sub <- pm[which((pm$taxon==taxon)&(pm$time = t_vals[t])),]
-  dfr <- rasterFromXYZ(pm_sub[,c('x', 'y', 'value')]) 
-  x <- stack(x, dfr)
+#### PREPARE MEAN PREDICTION DATAFRAMES ####
+# create list of dataframes, grouped by time period
+mean_list <- list()
+for(i in 1:n_times){
+  mean_list[[i]] <- cbind(locs_grid, data.frame(means[,,i]))
+  mean_list[[i]] <- pivot_longer(mean_list[[i]], cols = 3:ncol(mean_list[[i]]),
+                                 names_to = 'taxon_num', values_to = 'mean')
+  mean_list[[i]]$taxon_num <- as.integer(substr(mean_list[[i]]$taxon_num, start = 2, 
+                                           stop = nchar(mean_list[[i]]$taxon_num)))
+  mean_list[[i]] <- left_join(mean_list[[i]], taxa, by = 'taxon_num')
+  mean_list[[i]] <- mean_list[[i]] %>% dplyr::select(-taxon_num)
+}
+
+# create list of taxon-specific dataframes within time-specific list items
+mean_list <- lapply(mean_list, function(x) split(x, f = x$taxon))
+for(i in 1:n_times){
+    mean_list[[i]] <- lapply(mean_list[[i]], 
+                               function(x) x[!(names(x) %in% c('taxon'))])
+  }
+
+#### PREPARE SD PREDICTION DATAFRAMES ####
+# create list of dataframes, grouped by time period
+sd_list <- list()
+for(i in 1:n_times){
+  sd_list[[i]] <- cbind(locs_grid, data.frame(sds[,,i]))
+  sd_list[[i]] <- pivot_longer(sd_list[[i]], cols = 3:ncol(sd_list[[i]]),
+                                 names_to = 'taxon_num', values_to = 'sd')
+  sd_list[[i]]$taxon_num <- as.integer(substr(sd_list[[i]]$taxon_num, start = 2, 
+                                                stop = nchar(sd_list[[i]]$taxon_num)))
+  sd_list[[i]] <- left_join(sd_list[[i]], taxa, by = 'taxon_num')
+  sd_list[[i]] <- sd_list[[i]] %>% dplyr::select(-taxon_num)
+}
+
+# create list of taxon-specific dataframes within time-specific list items
+sd_list <- lapply(sd_list, function(x) split(x, f = x$taxon))
+for(i in 1:n_times){
+  sd_list[[i]] <- lapply(sd_list[[i]], 
+                           function(x) x[!(names(x) %in% c('taxon'))])
 }
 
 
-# START HERE AS OF SEPT 2020
-# require(devtools)
-# install_github("https://github.com/adamlilith/enmSdm")
-require(enmSdm)
-require(raster)
-run='ST_Aug'
-dat <- readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
-taxa <- dat$taxa.keep
+#### PREPARE MEAN PREDICTION DATA FOR PLOTTING ####
+# convert rasterstack masks into list of rasters, reverse order of items to correspond with time
+mask_list <- unstack(stack_sub)
+mask_names <- NA
+for(i in 1:n_times){
+  mask_names[i] <- names(mask_list[[i]])
+  mask_names[i] <- as.integer(substr(mask_names[i], start = 2, stop = nchar(mask_names[i]))) * 30
+}
+mask_names <- rev(mask_names)
+names(mask_list) <- mask_names
+mask_list <- rev(mask_list)
 
-# in hpcc, put all 12 raster stacks in a list
-# one stack per taxon; only values for 1st iteration for now
-# time chunks are stacked within the raster stacks
-stack_list <- readRDS('output/preds_raster_stack_Aug.RDS')
-
-# un-project coordinates before running through bv function
-# USA Contiguous albers equal area
-proj_out <- '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 
-+ellps=GRS80 +datum=NAD83 +units=m +no_defs'
-
-# specify projection (IS THIS RIGHT? IS IT ALBERS?)
-for(i in 1:length(stack_list)){
-  sp::proj4string(stack_list[[i]]) <- proj_out
+# convert predictions to rasters so you can mask out glaciers/ocean/lakes
+raster_list <- mean_list
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    raster_list[[i]][[j]] <- rasterFromXYZ(mean_list[[i]][[j]])
+    proj4string(raster_list[[i]][[j]]) <- proj
+    raster_list[[i]][[j]] <- resample(raster_list[[i]][[j]], y = mask_list[[i]])
+    raster_list[[i]][[j]] <- mask(raster_list[[i]][[j]], mask = mask_list[[i]])
+  }
 }
 
-bv_list <- list()
-# run through bv function
-for(i in 1:length(stack_list)){
-  bv_list[[i]] <- bioticVelocity(stack_list[[i]])
+# convert masked rasters to dataframes for plotting
+mask_df_list <- raster_list
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    mask_df_list[[i]][[j]] <- as.data.frame(raster_list[[i]][[j]], xy = TRUE)
+  }
 }
 
-# plot results
-par(mfrow = c(3, 4))
-for(i in 1:length(bv_list)){
-  plot(bv_list[[i]]$timeFrom, bv_list[[i]]$centroidVelocity, type = 'l',
-       main = taxa[i], xlab = '1,000 YBP', ylab = 'Centroid velocity (m/yr)')
+#### PREPARE SD PREDICTION DATA FOR PLOTTING ####
+# convert predictions to rasters so you can mask out glaciers/ocean/lakes
+raster_list <- sd_list
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    raster_list[[i]][[j]] <- rasterFromXYZ(sd_list[[i]][[j]])
+    proj4string(raster_list[[i]][[j]]) <- proj
+    raster_list[[i]][[j]] <- resample(raster_list[[i]][[j]], y = mask_list[[i]])
+    raster_list[[i]][[j]] <- mask(raster_list[[i]][[j]], mask = mask_list[[i]])
+  }
 }
 
-acer <- bv_list[[1]]
-acer$centroidLat <- acer$centroidLat * 1e3
-acer$centroidLong <- acer$centroidLong * 1e3
+# convert masked rasters to dataframes for plotting
+sd_mask_df_list <- raster_list
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    sd_mask_df_list[[i]][[j]] <- as.data.frame(raster_list[[i]][[j]], xy = TRUE)
+  }
+}
 
-ggplot(acer) +
-  geom_point(aes(x=centroidLong, y=centroidLat, color = timeFrom), size = 4) +
-  # geom_text(aes(x=centroidLong, y=centroidLat, color = timeFrom, label = timeFrom),
-  #           size = 8) +
-  geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-  geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-  scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  theme_classic() +
-  # theme(axis.ticks = element_blank(),
-  #       axis.text = element_blank(),
-  #       axis.title = element_blank(),
-  #       line = element_blank(),
-  #       legend.title = element_text(size = 16),
-  #       legend.text = element_text(size = 14),
-  #       plot.title = element_blank()) +
-  coord_equal()
+#### COMBINE MEAN AND SD PREDICTIONS, CONVERT BACK TO DATAFRAME FORMAT ####
+preds_list <- mask_df_list
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    preds_list[[i]][[j]] <- full_join(mask_df_list[[i]][[j]], sd_mask_df_list[[i]][[j]],
+                                      by = c('x','y'))
+  }
+}
+# saveRDS(preds_list, 'output/preds_list_mean_sd_all_taxa_Dec15.RDS')
 
-###########################################################################3333
-pi_mean = apply(preds$pi, c(2,3,4), mean, na.rm=TRUE)
-preds_melt = reshape2::melt(pi_mean)#, id.vars=c('x', 'y'))
-colnames(preds_melt) = c('loc', 'taxon', 'time', 'value')
-preds_melt$x = locs_grid[preds_melt$loc,'x']
-preds_melt$y = locs_grid[preds_melt$loc,'y']
-preds_melt$taxon = taxa.keep[preds_melt$taxon]
+for(i in 1:n_times){
+  for(j in 1:n_taxa){
+    preds_list[[i]][[j]]$taxon <- names(preds_list[[i]][j])
+  }
+}
+preds_list <- lapply(preds_list, function(x) bind_rows(x))
 
-props = apply(y, c(1,3), function(x) if (sum(x)==0){rep(0, length(x))} else if (sum(x)!=0){x/sum(x)})
-# props = y/rowSums(y)
-# dat_melt = reshape2::melt(data.frame(locs_pollen, props), id.vars=c('x', 'y'))
-dat_melt = reshape2::melt(props)#, id.vars=c('x', 'y'))
-colnames(dat_melt) = c('taxon', 'loc', 'time', 'value')
-dat_melt = dat_melt[, c('loc', 'taxon', 'time', 'value')]
-dat_melt$x = locs_pollen[dat_melt$loc,'x']
-dat_melt$y = locs_pollen[dat_melt$loc,'y']
-dat_melt$taxon = taxa.keep[dat_melt$taxon]
+for(i in 1:n_times){
+    preds_list[[i]]$time <- i
+}
+preds_df <- bind_rows(preds_list)
 
-all_melt = rbind(data.frame(dat_melt, type="data"),
-                 data.frame(preds_melt, type="preds"))
+preds_df <- pivot_longer(preds_df, cols = c('mean','sd'),
+                             names_to = 'type', values_to = 'preds')
+# saveRDS(preds_df, 'output/preds_long_df_mean_sd_all_taxa_Dec15.RDS')
 
-breaks = c(0, 0.01, 0.05, 0.10, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 1)
-all_melt$value_binned = cut(all_melt$value, breaks, include.lowest=TRUE, labels=FALSE)
 
-breaklabels = apply(cbind(breaks[1:(length(breaks)-1)], breaks[2:length(breaks)]), 1,
-                    function(r) { sprintf("%0.2f - %0.2f", r[1], r[2]) })
+##########################################################
+# PLOT PREDICTION MEANS AND SD BY TAXON X TIME
+##########################################################
 
-#
-# ggplot() +
-#   geom_point(data=all_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) +
-#   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-#   scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-#   # scale_colour_gradientn(colours = tim.colors(10), limits=c(0,1)) +
-#   # scale_fill_gradientn(colours = tim.colors(10), limits=c(0,1)) +
-#   facet_grid(variable~type) +
-#   geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-#   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-#   scale_y_continuous(limits = ylim) +
-#   scale_x_continuous(limits = xlim) +
-#   theme_classic() +
-#   theme(axis.ticks = element_blank(),
-#         axis.text = element_blank(),
-#         axis.title = element_blank(),
-#         line = element_blank(),
-#         legend.title = element_text(size = 16),
-#         legend.text = element_text(size = 14),
-#         plot.title = element_blank()) +
-#   coord_equal()
-# #ggsave(paste0("../figs/all_binned_", run, ".png"), device="png", type="cairo")
+#### CREATE SPECIES-SPECIFIC QUANTILE BREAKS FOR BETTER VISUALIZATION ####
+n_times <- nrow(preds_df %>% dplyr::select(time) %>% distinct)
+n_taxa <- nrow(preds_df %>% dplyr::select(taxon) %>% distinct)
 
-pdf(paste0("figures/preds_binned_tiled_", run, "_by_time.pdf"))
-for (tt in 1:N_times){
-  sub_melt = all_melt[which(all_melt$time == tt),]
+preds_list <- split(preds_df, f = preds_df$taxon)
+for(i in 1:n_taxa){
+  preds_list2 <- preds_list[[i]]
+  preds_list2 <- preds_list2[preds_list2$type == 'mean', ]
+  quants <- quantile(preds_list2$preds, probs = seq(0, 1, 0.1), na.rm = TRUE)
+  quants <- c(0, quants)
+  breaks <- cut(preds_list[[i]]$preds, breaks = quants, include.lowest = TRUE, labels = FALSE)
+  preds_list[[i]]$breaks <- breaks
+}
+preds_plot <- bind_rows(preds_list)
+
+# SELECT WHICH TAXA/TIME PERIODS YOU WANT TO PLOT (IF DESIRED)
+preds_plot_sub <- preds_plot[preds_plot$taxon %in% c('Fraxinus','Pinus') & 
+                               preds_plot$time %in% c(1,2), ]
+n_times <- nrow(preds_plot_sub %>% dplyr::select(time) %>% distinct)
+
+pdf('figures/preds_mean_sd_with_time.pdf')
+for (i in 1:n_times){
+  time_sub <- preds_plot_sub[which(preds_plot_sub$time == i), ]
+  
   p <- ggplot() +
-    geom_tile(data=subset(all_melt, type=="preds"), aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) +
-    scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    facet_wrap(.~taxon) +
+    geom_tile(data = time_sub, aes(x = x, y = y, fill = as.factor(breaks))) +
+    scale_fill_manual(values = tim.colors(11), name='Preds', drop=FALSE) +
+    facet_wrap(taxon ~ type) +
     geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
     geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
     scale_y_continuous(limits = ylim) +
     scale_x_continuous(limits = xlim) +
+    ggtitle(paste0(i-1, ',000 ybp')) +
     theme_classic() +
     theme(axis.ticks = element_blank(),
           axis.text = element_blank(),
           axis.title = element_blank(),
           line = element_blank(),
-          legend.title = element_text(size = 16),
-          legend.text = element_text(size = 14),
-          plot.title = element_blank()) +
+          # legend.title = element_text(size = 12),
+          # legend.text = element_text(size = 10),
+          plot.title = element_text(size = 12)) +
     coord_equal()
   print(p)
-  # ggsave(paste0("figures/preds_binned_tiled_", run, ".png"), device="png", type="cairo")
 }
 dev.off()
-
-time_bins = seq(250, 8000, by=500)
-
-times_sub = c(1, 4, 8, 12, 16)
-N_times_sub = length(times_sub)
-
-all_sub = all_melt[which(all_melt$taxon %in% c('Fagus', 'Ostrya.Carpinus', 'Picea', 'Pinus')),]
-all_sub = all_sub[which(all_sub$time %in% times_sub),]
-all_sub$time = time_bins[all_sub$time]
-all_sub = all_sub[which(all_sub$type=='preds'),]
-
-pdf(paste0("figures/preds_binned_tiled_", run, "_by_time_subset.pdf"))
-# for (tt in 1:N_times_sub){
-  # sub_melt = all_sub[which(all_sub$time == times_sub[tt]),]
-  p <- ggplot() +
-    geom_tile(data=all_sub, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) +
-    scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    facet_grid(time~taxon) +
-    geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-    geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-    scale_y_continuous(limits = ylim) +
-    scale_x_continuous(limits = xlim) +
-    theme_classic() +
-    theme(axis.ticks = element_blank(),
-          axis.text = element_blank(),
-          axis.title = element_blank(),
-          line = element_blank(),
-          legend.title = element_text(size = 16),
-          legend.text = element_text(size = 14),
-          plot.title = element_blank()) +
-    coord_equal()
-  print(p)
-  # ggsave(paste0("figures/preds_binned_tiled_", run, ".png"), device="png", type="cairo")
-# }
-dev.off()
-
-
-pdf(paste0("figures/preds_binned_tiled_", run, "_by_taxon.pdf"))
-# for (tt in 1:N_times){
-#   sub_melt = all_melt[which(all_melt$time == tt),]
-  p <- ggplot() +
-    geom_tile(data=subset(all_melt, type=="preds"), aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) +
-    scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-    facet_grid(time~taxon) +
-    geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-    geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-    scale_y_continuous(limits = ylim) +
-    scale_x_continuous(limits = xlim) +
-    theme_classic() +
-    theme(axis.ticks = element_blank(),
-          axis.text = element_blank(),
-          axis.title = element_blank(),
-          line = element_blank(),
-          legend.title = element_text(size = 16),
-          legend.text = element_text(size = 14),
-          plot.title = element_blank()) +
-    coord_equal()
-  print(p)
-  # ggsave(paste0("figures/preds_binned_tiled_", run, ".png"), device="png", type="cairo")
-# }
-dev.off()
-#
-# ggplot() +
-#   geom_tile(data=all_melt, aes(x=x, y=y, color=factor(value_binned), fill=factor(value_binned))) +
-#   scale_fill_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-#   scale_colour_manual(values = tim.colors(length(breaks)), labels=breaklabels, name='Proportion', drop=FALSE) +
-#   # scale_colour_gradientn(colours = tim.colors(10), limits=c(0,1)) +
-#   # scale_fill_gradientn(colours = tim.colors(10), limits=c(0,1)) +
-#   facet_grid(variable~type) +
-#   geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-#   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-#   scale_y_continuous(limits = ylim) +
-#   scale_x_continuous(limits = xlim) +
-#   theme_classic() +
-#   theme(axis.ticks = element_blank(),
-#         axis.text = element_blank(),
-#         axis.title = element_blank(),
-#         line = element_blank(),
-#         legend.title = element_text(size = 16),
-#         legend.text = element_text(size = 14),
-#         plot.title = element_blank()) +
-#   coord_equal()
-# ggsave(paste0("figures/all_binned_tiled_", run, ".png"), device="png", type="cairo")
