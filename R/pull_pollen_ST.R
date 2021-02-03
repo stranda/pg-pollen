@@ -164,6 +164,15 @@ colnames(xy) = c('x', 'y')
 compiled.cores = data.frame(xy, compiled.cores)
 compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
 
+# before removing non-tree taxa, calculate relative proportions of taxa for 
+# post-estimation model validation
+rel_prop <- compiled.cores
+start_num <- which(colnames(rel_prop) == 'Abies')
+rel_prop$sum <- apply(rel_prop[,c(start_num:ncol(rel_prop))], 1, function(x) sum(x, na.rm=TRUE))
+rel_prop <- rel_prop[rel_prop$sum > 0, ]
+rel_prop[,c(start_num:ncol(rel_prop))] <- rel_prop[,c(start_num:ncol(rel_prop))]/rel_prop$sum
+saveRDS(rel_prop, 'data/rel_props_raw_data.RDS')
+
 # remove non-tree taxa
 taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
