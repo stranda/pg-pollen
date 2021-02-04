@@ -259,53 +259,122 @@ dev.off()
 #### PLOT RAW DATA VS. PREDICTIONS AT POLLEN RECORD LOCATIONS
 ##############################################################
 
-# read raw data
-rel_prop <- readRDS('data/rel_props_raw_data.RDS')
+#### PREPARE RELATIVE PROPORTIONS
+# Get raster masks and spatial domain you want to use
+# (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
+stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
+proj <- proj4string(stack)
 
-# read taxon names; remove non-tree taxa; combine unused tree taxa counts into 'other' category
-# version <- 'Dec15'
+# Adam's spatial domain
+coords <- data.frame(x = c(stack@extent@xmin,stack@extent@xmax),
+                     y = c(stack@extent@ymin,stack@extent@ymax))
+sp::coordinates(coords) <- ~x + y
+sp::proj4string(coords) <- CRS(proj)
+coords <- sp::spTransform(coords, CRS("+init=epsg:4326"))
+
+# limits
+lat_hi  = coords@coords[2,2]
+lat_lo  = coords@coords[1,2]
+long_west = coords@coords[1,1]
+long_east = coords@coords[2,1]
+
+# read compiled.cores data
+compiled.cores <- readRDS('data/compiled.cores.chron.fixed.RDS')
+
+# until there's an answer as to why we get age NAs after running 'compile_downloads'...
+# for now just remove rows with age NAs
+compiled.cores <- compiled.cores[!is.na(compiled.cores$age), ]
+
+# ages have already been calibrated
+
+# remove pollen cores from isolated locations (islands, mexico)
+bermuda <- compiled.cores[compiled.cores$lat < 34 & compiled.cores$long > -78, ]
+bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
+mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
+remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
+remove.sites <- remove.sites %>% distinct()
+compiled.cores <- compiled.cores[!(row.names(compiled.cores) %in% row.names(remove.sites)),]
+
+# visualize subsetted data
+map <- map_data("world")
+ggplot(data = data.frame(map), aes(long, lat)) + 
+  geom_polygon(aes(group=group), color = "steelblue", alpha = 0.2) +
+  geom_point(data = compiled.cores,
+             aes(x = long, y = lat), color = 2, size = 2) +
+  xlab("Longitude West") + 
+  ylab("Latitude North") +
+  coord_map(projection = "albers",
+            lat0 = lat_lo,
+            lat1 = lat_hi, 
+            xlim = c(long_west, -59),
+            ylim = c(lat_lo, lat_hi))
+
+# convert projection to proj
+sp::coordinates(compiled.cores) <- ~long+lat
+sp::proj4string(compiled.cores) <- sp::CRS('+init=epsg:4326')
+albers <- sp::spTransform(compiled.cores, proj)
+xy = data.frame(coordinates(albers))
+colnames(xy) = c('x', 'y')
+
+# construct data frame with re-projected coordinates
+compiled.cores = data.frame(xy, compiled.cores)
+compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
+
+# read taxon names; combine unused tree taxa counts into 'Other_tree' category
+version <- 'Dec15'
 dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
 taxa <- dat$taxa.keep
 
-end_num <- which(colnames(rel_prop) == 'dataset')
-other_cols <- colnames(rel_prop[,1:end_num])
+end_num <- which(colnames(compiled.cores) == 'dataset')
+other_cols <- colnames(compiled.cores[,1:end_num])
 taxa_nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
-other_tree <- colnames(rel_prop[!(colnames(rel_prop) %in% taxa) & !(colnames(rel_prop) %in% taxa_nontree) & 
-                  !(colnames(rel_prop) %in% other_cols)])
-
-rel_prop$Other_tree <- apply(rel_prop[,colnames(rel_prop) %in% other_tree], 1, function(x) sum(x, na.rm=TRUE))
-
-# remove unneeded taxa
-keep <- c(colnames(rel_prop[,1:end_num]), taxa, 'Other_tree')
-rel_prop <- rel_prop[ , colnames(rel_prop) %in% keep]
-colnames(rel_prop)[colnames(rel_prop) == 'Other_tree'] <- 'Other'
+other_tree <- colnames(compiled.cores[!(colnames(compiled.cores) %in% taxa) & !(colnames(compiled.cores) %in% taxa_nontree) & 
+                                        !(colnames(compiled.cores) %in% other_cols)])
+compiled.cores$Other_tree <- apply(compiled.cores[,colnames(compiled.cores) %in% other_tree], 1, function(x) sum(x, na.rm=TRUE))
+compiled.cores <- compiled.cores[,!(colnames(compiled.cores) %in% other_tree)]
 
 # create time bins
-time_bins <- c(min(rel_prop$age), seq(0, 21000, by=990))
-n_times <- length(time_bins)-1
+time_bins = c(min(compiled.cores$age), seq(0, 21000, by=990))
+n_times = length(time_bins)-1
 
-age_cut <- cut(rel_prop$age, include.lowest = TRUE, breaks = time_bins)
-rel_prop$cut <- as.integer(age_cut)
-rel_prop <- rel_prop[!is.na(rel_prop$cut),] # remove rows with records >21k years old
+age_cut <- cut(compiled.cores$age, include.lowest = TRUE, breaks = time_bins)
+compiled.cores$cut <- as.integer(age_cut)
+compiled.cores <- compiled.cores[!is.na(compiled.cores$cut),] # remove rows with records >21k years old
 
-# separate dataframe into list of dataframes, one for each time chunk, remove excess columns
-time <- split(rel_prop, f = rel_prop$cut)
-keep <- c('x','y', taxa, 'Other')
-time <- lapply(time, function(x) x[names(x) %in% keep])
+rem_cols <- other_cols[3:length(other_cols)]
+compiled.cores <- compiled.cores[,!(colnames(compiled.cores) %in% rem_cols)]
+time <- split(compiled.cores, f = compiled.cores$cut)
+time <- lapply(time, function(x) x[!(names(x) %in% c("cut"))])
 
 # sum pollen counts by time chunk/site
 time_sum <- list()
 for(i in 1:n_times){
   time_sum[[i]] <- time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
   time_sum[[i]] <- ungroup(time_sum[[i]])
+}
+
+# calculate relative proportions
+for(i in 1:n_times){
+  time_sum[[i]]$sum <- apply(time_sum[[i]][,c(3:ncol(time_sum[[i]]))], 1, function(x) sum(x, na.rm=TRUE))
+  time_sum[[i]][,3:ncol(time_sum[[i]])] <- 
+    time_sum[[i]][,3:ncol(time_sum[[i]])]/time_sum[[i]]$sum
+  time_sum[[i]] <- time_sum[[i]] %>% dplyr::select(-sum)
   time_sum[[i]]$time <- i
 }
 
-# rowbind to create one dataframe
-rel_prop_df <- bind_rows(time_sum)
-# saveRDS(rel_prop_df, 'data/rel_prop_df_for_plotting.RDS')
+props <- bind_rows(time_sum)
+# saveRDS(props, 'data/rel_props_raw_data.RDS')
+
+# remove nontree taxa from rel prop df
+# taxa_nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
+props <- props[,!(colnames(props) %in% taxa_nontree)]
+colnames(props)[colnames(props) == 'Other_tree'] <- 'Other'
+props <- pivot_longer(props, taxa, 
+                         names_to = 'taxon', values_to = 'prop')
+# saveRDS(props, 'data/rel_props_raw_data_trees_only.RDS')
 
 
+#### PREPARE PREDICTIONS
 # read prediction grid locations
 locs_grid <- readRDS(paste0('data/grid_', version, '.RDS'))
 
@@ -331,66 +400,38 @@ preds_df <- pivot_longer(preds_df, taxa,
 #### DETERMINE WHICH PREDICTIONS ARE CLOSEST TO POLLEN RECORD LOCATIONS FOR FRAXINUS
 # require(rgeos)
 # preds_df <- readRDS('data/preds_df_for_plotting.RDS')
-# rel_prop_df <- readRDS('data/rel_prop_df_for_plotting.RDS')
+# props_df <- readRDS('data/rel_props_raw_data_trees_only.RDS')
 
 proj <- "+proj=aea +lat_0=37.5 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs"
-preds_frax <- preds_df[preds_df$taxon == "Fraxinus",]
-rel_prop_frax <- rel_prop_df[,c('x','y','Fraxinus','time')]
-rel_prop_frax <- rel_prop_frax[rel_prop_frax$Fraxinus > 0,]
+preds_frax <- preds_df[preds_df$taxon == 'Fraxinus',]
+props_frax <- props_df[props_df$taxon == 'Fraxinus',]
+props_frax <- props_frax[props_frax$prop > 0,]
 n_times <- nrow(preds_frax %>% dplyr::select(time) %>% distinct())
 
-prop <- list()
-preds <- list()
+props_list <- list()
+preds_list <- list()
 for(i in 1:n_times){
-prop[[i]] <- rel_prop_frax[rel_prop_frax$time == i, ]
-preds[[i]] <- preds_frax[preds_frax$time == i, ]
+props_list[[i]] <- props_frax[props_frax$time == i, ]
+preds_list[[i]] <- preds_frax[preds_frax$time == i, ]
 
-sp_rel_prop <- SpatialPointsDataFrame(coords = prop[[i]][,c('x','y')],
-                                      data = prop[[i]][,3:ncol(prop[[i]])],
+sp_props <- SpatialPointsDataFrame(coords = props_list[[i]][,c('x','y')],
+                                      data = props_list[[i]][,3:ncol(props_list[[i]])],
                                       proj4string = CRS(proj))
-sp_preds <- SpatialPointsDataFrame(coords = preds[[i]][,c('x','y')],
-                                   data = preds[[i]][,3:ncol(preds[[i]])],
+sp_preds <- SpatialPointsDataFrame(coords = preds_list[[i]][,c('x','y')],
+                                   data = preds_list[[i]][,3:ncol(preds_list[[i]])],
                                    proj4string = CRS(proj))
-prop[[i]]$nearest <- apply(gDistance(sp_preds, sp_rel_prop, byid = TRUE), 1, which.min)
-preds[[i]]$nearest <- as.integer(rownames(preds[[i]]))
-prop[[i]] <- left_join(prop[[i]], preds[[i]][,c('pred','nearest')], by = 'nearest')
-
+props_list[[i]]$nearest <- apply(gDistance(sp_preds, sp_props, byid = TRUE), 1, which.min)
+preds_list[[i]]$nearest <- as.integer(rownames(preds_list[[i]]))
+props_list[[i]] <- left_join(props_list[[i]], preds_list[[i]][,c('pred','nearest')], by = 'nearest')
 }
 
-prop_preds <- bind_rows(prop)
-
-prop1 <- rel_prop_frax[rel_prop_frax$time == 1, ]
-preds1 <- preds_frax[preds_frax$time == 1, ]
-
-sp_rel_prop <- SpatialPointsDataFrame(coords = prop1[,c('x','y')],
-                                      data = prop1[,3:ncol(prop1)],
-                                      proj4string = CRS(proj))
-sp_preds <- SpatialPointsDataFrame(coords = preds1[,c('x','y')],
-                                   data = preds1[,3:ncol(preds1)],
-                                   proj4string = CRS(proj))
-prop1$nearest <- apply(gDistance(sp_preds, sp_rel_prop, byid = TRUE), 1, which.min)
-
-preds1$nearest <- as.integer(rownames(preds1))
-prop1 <- left_join(prop1, preds1[,c('pred','nearest')], by = 'nearest')
+prop_pred <- bind_rows(props_list)
 
 
-
-# plot preds and props together to make sure code worked
-ggplot() +
-  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-  
-  geom_point(data = preds1[preds1$nearest %in% prop1$nearest,], aes(x = x, y = y),
-             alpha = 0.5, size = 3, color = 'red') +
-  geom_point(data = prop1, aes(x = x, y = y), alpha = 0.5, size = 2, color = 'blue') +
-  
-  scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  theme_classic() +
-  coord_equal()
-
-plot(prop1$Fraxinus, prop1$pred, 
+#### CREATE SCATTERPLOT
+plot(prop_pred$prop, prop_pred$pred, 
+     ylim = c(0,0.3), xlim = c(0,0.3),
      xlab = 'Fraxinus relative proportion',
      ylab = 'Fraxinus model predictions',
-     main = 'Present')
-
+     main = 'Fraxinus (all time periods)')
+abline(a = 0, b = 1)
