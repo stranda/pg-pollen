@@ -8,6 +8,7 @@ library(sp)
 library(dplyr)
 library(raster)
 library(mapproj)
+library(ggplot2)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
 version = '2.0'
@@ -37,9 +38,9 @@ long_west = coords@coords[1,1]
 long_east = coords@coords[2,1]
 
 # load pollen data 
-load('pollen_north_america_p25.rdata')
-load('sites_north_america.rdata')
-load('pollen.equiv.rda')
+load('data/pollen_north_america_p25.rdata')
+load('data/sites_north_america.rdata')
+load('data/pollen.equiv.rda')
 
 compiled.cores = pollen_north_america
 sites.cores = sites_north_america
@@ -80,10 +81,10 @@ calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
 #  we want the weighted means from "calibrated"
 wmean.date <- function(x) sum(x$ageGrid*x$densities / sum(x$densities))
 compiled.cores$age[radio.years] <- sapply(calibrated, wmean.date)
+# saveRDS(compiled.cores, 'data/compiled_cores_P25_all_times.RDS')
 
 # remove any samples with ages greater than 50000 YBP
-compiled.cores <- compiled.cores[which(compiled.cores$age < 21000), ]
-
+compiled.cores <- compiled.cores[which(compiled.cores$age < 21500), ]
 hist(compiled.cores$age)
 
 # only keep pollen from within domain of interest
@@ -106,15 +107,13 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             xlim = c(long_west, -59),
             ylim = c(lat_lo, lat_hi))
 
-
-
 # remove pollen cores from isolated locations (islands, mexico)
 bermuda <- compiled.cores[compiled.cores$lat < 34 & compiled.cores$long > -78, ]
 bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
 mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
 remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
 remove.sites <- remove.sites %>% distinct()
-compiled.cores <- compiled.cores[!(row.names(compiled.cores) %in% row.names(remove.sites)),]
+compiled.cores <- compiled.cores[!(compiled.cores$siteid) %in% remove.sites$siteid,]
 
 # convert projection to proj
 sp::coordinates(compiled.cores) <- ~long+lat
@@ -126,9 +125,10 @@ colnames(xy) = c('x', 'y')
 # construct data frame with re-projected coordinates
 compiled.cores = data.frame(xy, compiled.cores)
 compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
+# save this for later when you'll need to calculate relative proportions for model validation
+# saveRDS(compiled.cores, 'data/compiled_cores_P25.RDS')
 
 # remove non-tree taxa
-# taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
@@ -136,40 +136,55 @@ tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontre
 # i.e., rows that contain only zeros/NAs across all taxa
 tree.cores$sum <- apply(tree.cores[,13:ncol(tree.cores)], 1, function(x) sum(x, na.rm=TRUE))
 tree.cores <- tree.cores[tree.cores$sum > 0, ]
+tree.cores <- tree.cores %>% select(-sum)
+
+# specify which tree taxa to keep
+# use 13 taxa with highest relative proportions
+props <- tree.cores[,13:35]/rowSums(tree.cores[,13:35], na.rm = TRUE)
+props <- pivot_longer(props, cols = colnames(props), names_to = 'taxon', values_to = 'props')
+props <- props %>% group_by(taxon) %>% summarise(props = sum(props))
+props <- props %>% arrange(desc(props))
+taxa.keep <- props[1:13, ]
+taxa.keep <- as.character(taxa.keep$taxon)
 
 # ASSIGN TIME CHUNKS
-# QUESTIONS
-# PLACE ALL NEGATIVE AGES IN SAME BIN AS TIME = 0?
-# For now, just bin everything that's <0 together
+# Modern time = AD 1800 - 2000 (i.e., 150 to -50 YBP)
+# Paleo time = 21,000 - 150 YBP
 
-time_bins = c(min(tree.cores$age), seq(0, 21000, by=990))
-N_times = length(time_bins)-1
-
-test.cut <- cut(tree.cores$age, include.lowest = TRUE, breaks = time_bins)
-test <- tree.cores
-test$cut <- as.integer(test.cut)
-test <- test[!is.na(test$cut),] # remove rows with records >21k years old
+# MODERN TIME
+modern <- tree.cores[tree.cores$age >= -50 & tree.cores$age < 150, ]
+modern_bins <- seq(-50, 150, by = 50)
+modern_cut <- cut(modern$age, include.lowest = TRUE, breaks = modern_bins)
+modern$cut <- as.integer(modern_cut)
 
 # assign unique ID to each distinct x, y coordinate
-xyid <- test[,c('x','y')] %>% distinct()
-xyid$id <- as.character(seq(1, nrow(xyid), by = 1))
+modern_xyid <- modern %>% select(x,y) %>% distinct()
+modern_xyid$id <- as.character(seq(1, nrow(modern_xyid), by = 1))
 
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
-time <- split(test, f = test$cut)
+modern_time <- split(modern, f = modern$cut)
 
-# QUESTION: NOW THAT WE AREN'T TESTING THE MODEL ANYMORE, SHOULD WE ADD MORE TAXA?
-# FOR NOW, USE TAXA WITH >200,000 TOTAL POLLEN COUNT
+# PALEO TIME
+paleo <- tree.cores[tree.cores$age >= 150, ]
+paleo_bins <- seq(150, max(paleo$age), by = 500)
+paleo_cut <- cut(paleo$age, include.lowest = TRUE, breaks = paleo_bins)
+paleo$cut <- as.integer(paleo_cut)
+paleo <- paleo[!is.na(paleo$cut),] # remove ages > highest time bin
+
+# assign unique ID to each distinct x, y coordinate
+paleo_xyid <- paleo %>% select(x,y) %>% distinct()
+paleo_xyid$id <- as.character(seq(1, nrow(paleo_xyid), by = 1))
+
+# separate dataframe into list of dataframes, one for each time chunk, remove excess columns
+paleo_time <- split(paleo, f = paleo$cut)
+
+
 # extract pollen data from specified taxa
 # and combine the other tree taxa into 'other' column
 
-props <- tree.cores[,13:35]/rowSums(tree.cores[,13:35], na.rm = TRUE)
 
-summ <- data.frame(pollen_sum = apply(tree.cores[,13:35], 2, function(x) sum(x, na.rm=TRUE)))
-summ$gtlt <- ifelse(summ$pollen_sum<200000,"less","greater")
-taxa.keep <- rownames(summ[summ$pollen_sum >= 200000, ])
-taxa.nontree = c('Other', 'Prairie.Forbs', 'Poaceae')
-
-for (i in 1:N_times){
+n_times <- 
+for (i in 1:n_times){
   compiled.meta = time[[i]][,c('x', 'y')]
   compiled.counts = time[[i]][,13:35]
   compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
@@ -212,11 +227,11 @@ for (i in 1:N_times){
 
 locs <- locs[,c('x','y')]
 
-saveRDS(dat_array, paste0('data/', 'pollen_dat_', version, '.RDS'))
-saveRDS(locs, paste0('data/', 'pollen_locs_', version, '.RDS'))
+saveRDS(dat_array, paste0('data/', 'pollen_dat_', version, '.RDS')) # two diff't versions of this
+saveRDS(locs, paste0('data/', 'pollen_locs_', version, '.RDS')) # two diff't versions of this
 saveRDS(taxa.keep, paste0('data/', 'pollen_taxa_', version, '.RDS'))
 
-#
+#ANDRIA'S EXTRA CODE - TRYING TO FIND SITE UNDER GLACIER
 
 dat_array = readRDS('data/pollen_dat_1.0.RDS')
 locs = readRDS('data/pollen_locs_1.0.RDS')
