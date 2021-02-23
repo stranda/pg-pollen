@@ -5,10 +5,11 @@ library(Bchron)
 library(ggplot2)
 library(data.table)
 library(sp)
-library(dplyr)
 library(raster)
 library(mapproj)
 library(ggplot2)
+library(dplyr)
+library(tidyr)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
 version = '2.0'
@@ -129,18 +130,18 @@ compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
 # saveRDS(compiled.cores, 'data/compiled_cores_P25.RDS')
 
 # remove non-tree taxa
-taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae')
+taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae', 'Cyperaceae')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
 # remove sites with no tree pollen counts
 # i.e., rows that contain only zeros/NAs across all taxa
 tree.cores$sum <- apply(tree.cores[,13:ncol(tree.cores)], 1, function(x) sum(x, na.rm=TRUE))
 tree.cores <- tree.cores[tree.cores$sum > 0, ]
-tree.cores <- tree.cores %>% select(-sum)
+tree.cores <- tree.cores %>% dplyr::select(-sum)
 
 # specify which tree taxa to keep
 # use 13 taxa with highest relative proportions
-props <- tree.cores[,13:35]/rowSums(tree.cores[,13:35], na.rm = TRUE)
+props <- tree.cores[,13:ncol(tree.cores)]/rowSums(tree.cores[,13:ncol(tree.cores)], na.rm = TRUE)
 props <- pivot_longer(props, cols = colnames(props), names_to = 'taxon', values_to = 'props')
 props <- props %>% group_by(taxon) %>% summarise(props = sum(props))
 props <- props %>% arrange(desc(props))
@@ -158,7 +159,7 @@ modern_cut <- cut(modern$age, include.lowest = TRUE, breaks = modern_bins)
 modern$cut <- as.integer(modern_cut)
 
 # assign unique ID to each distinct x, y coordinate
-modern_xyid <- modern %>% select(x,y) %>% distinct()
+modern_xyid <- modern %>% dplyr::select(x,y) %>% distinct()
 modern_xyid$id <- as.character(seq(1, nrow(modern_xyid), by = 1))
 
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
@@ -172,64 +173,98 @@ paleo$cut <- as.integer(paleo_cut)
 paleo <- paleo[!is.na(paleo$cut),] # remove ages > highest time bin
 
 # assign unique ID to each distinct x, y coordinate
-paleo_xyid <- paleo %>% select(x,y) %>% distinct()
+paleo_xyid <- paleo %>% dplyr::select(x,y) %>% distinct()
 paleo_xyid$id <- as.character(seq(1, nrow(paleo_xyid), by = 1))
 
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
 paleo_time <- split(paleo, f = paleo$cut)
 
 
-# extract pollen data from specified taxa
-# and combine the other tree taxa into 'other' column
+# CREATE 'OTHER' TAXON BY COMBINING TREE COUNTS FROM TREES NOT BEING MODELED INDIVIDUALLY
+# SUM POLLEN COUNTS BY TIME PERIOD/SITE
+# MERGE WITH SITE IDENTIFIER; EACH TIME PERIOD SHOULD HAVE SAME # ROWS (SITES)
+# CONVERT VALUES TO INTEGERS
 
-
-n_times <- 
-for (i in 1:n_times){
-  compiled.meta = time[[i]][,c('x', 'y')]
-  compiled.counts = time[[i]][,13:35]
+# MODERN
+n_times <- length(modern_time)
+for(i in 1:n_times){
+  compiled.meta = modern_time[[i]][,c('x', 'y')]
+  compiled.counts = modern_time[[i]][,13:ncol(modern_time[[i]])]
   compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
                                           (!(colnames(compiled.counts) %in% taxa.nontree)))]
   compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)],
                                    Other = rowSums(compiled.other, na.rm=TRUE))
-  time[[i]]= data.frame(compiled.meta, compiled.counts.sub)
+  modern_time[[i]] = data.frame(compiled.meta, compiled.counts.sub)
 }
 
-# sum pollen counts by time chunk/site
-time_sum <- list()
-for(i in 1:N_times){
-  time_sum[[i]] <- time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
-  time_sum[[i]] <- ungroup(time_sum[[i]])
+for(i in 1:n_times){
+  modern_time[[i]] <- modern_time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
+  modern_time[[i]] <- ungroup(modern_time[[i]])
+  modern_time[[i]] <- left_join(modern_xyid, modern_time[[i]], by = c('x','y'))
+  modern_time[[i]][,4:ncol(modern_time[[i]])] <- apply(modern_time[[i]][,4:ncol(modern_time[[i]])], c(1,2), as.integer)
 }
 
-# add unique x, y coordinate identifier to each dataframe; merge so that all 
-# dataframes have the same # rows (nrows in xyid object)
-for(i in 1:N_times){
-  time_sum[[i]] <- left_join(xyid, time_sum[[i]], by = c('x','y'))
+
+# PALEO
+n_times <- length(paleo_time)
+for(i in 1:n_times){
+  compiled.meta = paleo_time[[i]][,c('x', 'y')]
+  compiled.counts = paleo_time[[i]][,13:ncol(paleo_time[[i]])]
+  compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
+                                             (!(colnames(compiled.counts) %in% taxa.nontree)))]
+  compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)],
+                                   Other = rowSums(compiled.other, na.rm=TRUE))
+  paleo_time[[i]] = data.frame(compiled.meta, compiled.counts.sub)
 }
 
-# convert numeric pollen counts to integer class
-for(i in 1:N_times){
-  time_sum[[i]][,4:17] <- apply(time_sum[[i]][,4:17], c(1,2), as.integer)
+for(i in 1:n_times){
+  paleo_time[[i]] <- paleo_time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
+  paleo_time[[i]] <- ungroup(paleo_time[[i]])
+  paleo_time[[i]] <- left_join(modern_xyid, paleo_time[[i]], by = c('x','y'))
+  paleo_time[[i]][,4:ncol(paleo_time[[i]])] <- apply(paleo_time[[i]][,4:ncol(paleo_time[[i]])], c(1,2), as.integer)
 }
 
-# extract site coordinates
-locs <- time_sum[[1]][,c('x','y','id')]
-N_locs = nrow(locs)
-N_taxa = length(taxa.keep) + 1
 
-dat_array = array(0, dim = c(N_locs, N_taxa, N_times))
-for (i in 1:N_times){
-  for (j in 1:N_locs){
-    site_id = as.numeric(time_sum[[i]]$id[j])
-    dat_array[site_id,,i] = as.numeric(unname(time_sum[[i]][j,4:(4+N_taxa-1)]))
+# CONSTRUCT DATA LIST, INCLUDING LOCATIONS, INTEGER ARRAY, AND TAXA.KEEP
+
+# MODERN
+modern_locs <- modern_time[[1]][,c('x','y','id')]
+n_locs <- nrow(modern_locs)
+n_taxa <- length(taxa.keep) + 1
+n_times <- length(modern_time)
+
+modern_dat_array <- array(0, dim = c(n_locs, n_taxa, n_times))
+for (i in 1:n_times){
+  for (j in 1:n_locs){
+    site_id = as.numeric(modern_time[[i]]$id[j])
+    modern_dat_array[site_id,,i] = as.numeric(unname(modern_time[[i]][j,4:(4+n_taxa-1)]))
   }
 }
+modern_locs <- modern_locs[,c('x','y')]
 
-locs <- locs[,c('x','y')]
-
-saveRDS(dat_array, paste0('data/', 'pollen_dat_', version, '.RDS')) # two diff't versions of this
-saveRDS(locs, paste0('data/', 'pollen_locs_', version, '.RDS')) # two diff't versions of this
+saveRDS(modern_dat_array, paste0('data/', 'modern_pollen_dat_', version, '.RDS'))
+saveRDS(modern_locs, paste0('data/', 'modern_pollen_locs_', version, '.RDS'))
 saveRDS(taxa.keep, paste0('data/', 'pollen_taxa_', version, '.RDS'))
+
+
+# PALEO
+paleo_locs <- paleo_time[[1]][,c('x','y','id')]
+n_locs <- nrow(paleo_locs)
+n_times <- length(paleo_time)
+
+paleo_dat_array <- array(0, dim = c(n_locs, n_taxa, n_times))
+for (i in 1:n_times){
+  for (j in 1:n_locs){
+    site_id = as.numeric(paleo_time[[i]]$id[j])
+    paleo_dat_array[site_id,,i] = as.numeric(unname(paleo_time[[i]][j,4:(4+n_taxa-1)]))
+  }
+}
+paleo_locs <- paleo_locs[,c('x','y')]
+
+saveRDS(paleo_dat_array, paste0('data/', 'paleo_pollen_dat_', version, '.RDS'))
+saveRDS(paleo_locs, paste0('data/', 'paleo_pollen_locs_', version, '.RDS'))
+
+
 
 #ANDRIA'S EXTRA CODE - TRYING TO FIND SITE UNDER GLACIER
 
