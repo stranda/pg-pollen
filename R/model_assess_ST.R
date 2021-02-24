@@ -111,15 +111,19 @@ ggsave(paste0("figures/covariance_vs_distance_", run, ".pdf"))#, device="pdf", t
 # tau
 tau_melt = reshape2::melt(tau2)
 colnames(tau_melt) = c('iter', 'taxon', 'value')
-ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxon)))
+taxa <- readRDS('data/pollen_taxa_Dec15.RDS')
+taxa <- data.frame(taxa.id = 1:13, taxa = taxa)
+tau_melt <- merge(tau_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
+ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)))
 ggsave(paste0("figures/trace_tau_", run, ".png"), device="png", type="cairo")
 
 # theta
 theta_melt = reshape2::melt(theta)
 colnames(theta_melt) = c('iter', 'taxon', 'number', 'value')
+theta_melt <- merge(theta_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=theta_melt) + 
-  geom_line(aes(x=iter, y=exp(value), color=factor(taxon))) +
+  geom_line(aes(x=iter, y=exp(value), color=factor(taxa))) +
   theme_bw() +
   facet_grid(number~., scales="free_y")
 ggsave(paste0("figures/trace_theta_", run, ".png"), device="png", type="cairo")
@@ -128,9 +132,10 @@ ggsave(paste0("figures/trace_theta_", run, ".png"), device="png", type="cairo")
 mu_melt = reshape2::melt(beta)
 colnames(mu_melt) = c('iter', 'taxon', 'value')
 mu_melt$taxon = taxa[mu_melt$taxon]
+mu_melt <- merge(mu_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=mu_melt) + 
-  geom_line(aes(x=iter, y=value, color=taxon)) +
+  geom_line(aes(x=iter, y=value, color=taxa)) +
   theme_bw()
 ggsave(paste0("figures/trace_mu_", run, ".png"), device="png", type="cairo")
 
