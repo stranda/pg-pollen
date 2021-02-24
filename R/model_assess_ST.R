@@ -114,7 +114,10 @@ colnames(tau_melt) = c('iter', 'taxon', 'value')
 taxa <- readRDS('data/pollen_taxa_Dec15.RDS')
 taxa <- data.frame(taxa.id = 1:13, taxa = taxa)
 tau_melt <- merge(tau_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
-ggplot() + geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)))
+ggplot() + 
+  geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)), size = 1.5) + 
+  theme_bw() +
+  guides(color = guide_legend(override.aes = list(size = 4)))
 ggsave(paste0("figures/trace_tau_", run, ".png"), device="png", type="cairo")
 
 # theta
@@ -123,9 +126,10 @@ colnames(theta_melt) = c('iter', 'taxon', 'number', 'value')
 theta_melt <- merge(theta_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=theta_melt) + 
-  geom_line(aes(x=iter, y=exp(value), color=factor(taxa))) +
+  geom_line(aes(x=iter, y=exp(value), color=factor(taxa)), size = 1.5) +
   theme_bw() +
-  facet_grid(number~., scales="free_y")
+  facet_grid(number~., scales="free_y") +
+  guides(color = guide_legend(override.aes = list(size = 4)))
 ggsave(paste0("figures/trace_theta_", run, ".png"), device="png", type="cairo")
 
 # mu
@@ -136,7 +140,9 @@ mu_melt <- merge(mu_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=mu_melt) + 
   geom_line(aes(x=iter, y=value, color=taxa)) +
-  theme_bw()
+  theme_bw() +
+  guides(color = guide_legend(override.aes = list(size = 4)))
+
 ggsave(paste0("figures/trace_mu_", run, ".png"), device="png", type="cairo")
 
 ###############################################################################################################################
