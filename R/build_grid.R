@@ -1,9 +1,11 @@
 
 require(raster)
 require(sp)
+require(rgdal)
+require(ggplot)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version <- '1.0'
+version <- '2.0'
 
 # READ IN DATA
 dat <- readRDS(paste0('data/', 'pollen_locs_', version, '.RDS'))
