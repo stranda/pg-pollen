@@ -12,7 +12,7 @@ library(dplyr)
 library(tidyr)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version = '2.0'
+version = '3.0'
 
 # READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
 # USA Contiguous albers equal area
@@ -39,11 +39,10 @@ long_west = coords@coords[1,1]
 long_east = coords@coords[2,1]
 
 # load pollen data 
-load('data/pollen_north_america_p25.rdata')
+compiled.cores <- read.csv('data/pollen_north_america_v6.0.csv', stringsAsFactors = FALSE)
 load('data/sites_north_america.rdata')
 load('data/pollen.equiv.rda')
 
-compiled.cores = pollen_north_america
 sites.cores = sites_north_america
 
 compiled.cores = data.frame(long = sites.cores[match(compiled.cores$dataset_id, sites.cores$datasetid), 'longitude'],
@@ -69,20 +68,20 @@ ggplot(data = data.frame(map), aes(long, lat)) +
 # for now just remove rows with age NAs
 compiled.cores <- compiled.cores[!is.na(compiled.cores$age), ]
 
-# translate any dates in radiocarbon years to calendar years
-radio.years <- (compiled.cores$agetype %in% "Radiocarbon years BP") &
-  (compiled.cores$age > 95 ) &
-  (compiled.cores$age < 50193)
-sryears <- sum(radio.years, na.rm = TRUE)
-
-# BChronCalibrate is in the BChron package:
-calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
-                              ageSds = rep(100, sryears),
-                              calCurves = rep("intcal20", sryears))
-#  we want the weighted means from "calibrated"
-wmean.date <- function(x) sum(x$ageGrid*x$densities / sum(x$densities))
-compiled.cores$age[radio.years] <- sapply(calibrated, wmean.date)
-# saveRDS(compiled.cores, 'data/compiled_cores_P25_all_times.RDS')
+# # translate any dates in radiocarbon years to calendar years
+# radio.years <- (compiled.cores$agetype %in% "Radiocarbon years BP") &
+#   (compiled.cores$age > 95 ) &
+#   (compiled.cores$age < 50193)
+# sryears <- sum(radio.years, na.rm = TRUE)
+# 
+# # BChronCalibrate is in the BChron package:
+# calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
+#                               ageSds = rep(100, sryears),
+#                               calCurves = rep("intcal20", sryears))
+# #  we want the weighted means from "calibrated"
+# wmean.date <- function(x) sum(x$ageGrid*x$densities / sum(x$densities))
+# compiled.cores$age[radio.years] <- sapply(calibrated, wmean.date)
+# # saveRDS(compiled.cores, 'data/compiled_cores_P25_all_times.RDS')
 
 # remove any samples with ages greater than 50000 YBP
 compiled.cores <- compiled.cores[which(compiled.cores$age < 21500), ]
@@ -135,13 +134,14 @@ tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontre
 
 # remove sites with no tree pollen counts
 # i.e., rows that contain only zeros/NAs across all taxa
-tree.cores$sum <- apply(tree.cores[,13:ncol(tree.cores)], 1, function(x) sum(x, na.rm=TRUE))
+start_col <- which(colnames(tree.cores) == 'Abies')
+tree.cores$sum <- apply(tree.cores[,start_col:ncol(tree.cores)], 1, function(x) sum(x, na.rm=TRUE))
 tree.cores <- tree.cores[tree.cores$sum > 0, ]
 tree.cores <- tree.cores %>% dplyr::select(-sum)
 
 # specify which tree taxa to keep
 # use 13 taxa with highest relative proportions
-props <- tree.cores[,13:ncol(tree.cores)]/rowSums(tree.cores[,13:ncol(tree.cores)], na.rm = TRUE)
+props <- tree.cores[,start_col:ncol(tree.cores)]/rowSums(tree.cores[,13:ncol(tree.cores)], na.rm = TRUE)
 props <- pivot_longer(props, cols = colnames(props), names_to = 'taxon', values_to = 'props')
 props <- props %>% group_by(taxon) %>% summarise(props = sum(props))
 props <- props %>% arrange(desc(props))
@@ -181,6 +181,7 @@ paleo_time <- split(paleo, f = paleo$cut)
 
 
 # CREATE 'OTHER' TAXON BY COMBINING TREE COUNTS FROM TREES NOT BEING MODELED INDIVIDUALLY
+# (if you want to retain 'Other tree' column, you'll need to use length(n_taxa) + 1 in later code)
 # SUM POLLEN COUNTS BY TIME PERIOD/SITE
 # MERGE WITH SITE IDENTIFIER; EACH TIME PERIOD SHOULD HAVE SAME # ROWS (SITES)
 # CONVERT VALUES TO INTEGERS
@@ -230,7 +231,7 @@ for(i in 1:n_times){
 # MODERN
 modern_locs <- modern_time[[1]][,c('x','y','id')]
 n_locs <- nrow(modern_locs)
-n_taxa <- length(taxa.keep) + 1
+n_taxa <- length(taxa.keep)
 n_times <- length(modern_time)
 
 modern_dat_array <- array(0, dim = c(n_locs, n_taxa, n_times))
