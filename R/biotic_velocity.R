@@ -231,6 +231,100 @@ ggplot(data = refuge_df) +
 
 
 
+#### INTERPOLATING TO 30-YEAR TIME RESOLUTION
+# require(enmSdm)
+# require(raster)
+
+paleo <- readRDS('output/preds_paleo_mean_frax.RDS')
+modern <- readRDS('output/preds_modern_mean_frax.RDS')
+# taxa <- readRDS('data/pollen_taxa_3.0.RDS')
+locs <- readRDS('data/grid_3.0.RDS')
+proj <- '+proj=aea +lat_0=37.5 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs'
+
+# CONVERT PREDICTION ARRAYS TO RASTERSTACK
+n_times <- dim(modern)[2]
+modern_list <- list()
+for(i in 1:n_times){
+  modern_list[[i]] <- as.data.frame(modern[,i])
+  names(modern_list[[i]]) <- 'pred'
+  modern_list[[i]] <- cbind(locs, modern_list[[i]])
+  modern_list[[i]] <- rasterFromXYZ(modern_list[[i]], crs = CRS(proj))
+}
+
+n_times <- dim(paleo)[2]
+paleo_list <- list()
+for(i in 1:n_times){
+  paleo_list[[i]] <- as.data.frame(paleo[,i])
+  names(paleo_list[[i]]) <- 'pred'
+  paleo_list[[i]] <- cbind(locs, paleo_list[[i]])
+  paleo_list[[i]] <- rasterFromXYZ(paleo_list[[i]], crs = CRS(proj))
+}
+
+all_list <- c(modern_list, paleo_list)
+
+# MASK OUT SEAS, LAKES, ICE
+# rasterstack masks are arranged LGM (item 1) to modern (item 701)
+# I think modern = 2000 A.D.
+stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
+stack_list <- unstack(stack)
+stack_list <- rev(stack_list)
+
+stack_list_c <- stack_list
+for(i in 1:length(stack_list_c)){
+  stack_list_c[[i]][stack_list_c[[i]] == 1] <- NA
+}
+
+# Specify pollen times (46 total; 4 modern and 42 paleo)
+times <- c(seq(0, 150, by = 50), seq(from = 650, by = 500, length.out = n_times))
+
+# create vector of ice mask times
+adam_times <- seq(0, 700, 1) * 30
+
+# interpolate pollen rasters to temporal resolution of 30yrs
+all_stack <- stack(all_list)
+interp <- interpolateRasters(all_stack, interpFrom = times, interpTo = adam_times)
+interp_list <- unstack(interp)
+
+# mask out ice/water
+n_times <- length(stack_list_c)
+mask_list <- interp_list
+for(i in 1:n_times){
+  mask_list[[i]] <- raster::resample(mask_list[[i]], y = stack_list_c[[i]])
+  mask_list[[i]] <- mask(mask_list[[i]], mask = stack_list_c[[i]])
+}
+mask_stack <- stack(mask_list)
+
+
+# THE PLOTS DON'T LOOK LIKE FRAXINUS DISTRIBUTIONS. 
+# I DOUBLE CHECKED THE PULL POLLEN CODE TO MAKE SURE MY TAXON LIST WAS CORRECT. LOOKS FINE.
+
+
+# GET BIOTIC VELOCITY FROM INTERPOLATED RASTERS
+interp_list <- unstack(interp)
+interp_list <- rev(interp_list)  # oldest needs to be on top
+
+# for not, just remove empty rasters
+interp_list <- interp_list[15:697]
+
+interp <- stack(interp_list)
+bv_times <- adam_times * -1
+bv_times <- bv_times[15:697]  # just for now, to get the function to work
+bvs <- bioticVelocity(interp, times = bv_times, onlyInSharedCells = TRUE)
+
+minor_breaks <- rev(times$from) * -1
+breaks <- minor_breaks[seq(1,42, by = 2)]
+
+ggplot(data = bvs, aes(x = timeFrom, y = centroidVelocity)) +
+  geom_line() + 
+  scale_x_continuous(minor_breaks = minor_breaks, breaks = breaks) +
+  labs(x = 'Time from (years before present)', y = 'Centroid velocity (m/yr)') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.9, hjust=1),
+        text = element_text(size = 14))
+ggsave('figures/bvs_after_30yr_interp.png')
+
+
+
 
 # OLD CODE
 
