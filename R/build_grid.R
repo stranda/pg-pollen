@@ -2,13 +2,13 @@
 require(raster)
 require(sp)
 require(rgdal)
-require(ggplot)
+require(ggplot2)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version <- '2.0'
+version <- '3.0'
 
 # READ IN DATA
-dat <- readRDS(paste0('data/', 'pollen_locs_', version, '.RDS'))
+dat <- readRDS(paste0('data/', 'modern_pollen_locs_', version, '.RDS'))
 locs_pollen <- dat$locs
 
 # Get spatial domain and projection you want to use
