@@ -109,10 +109,10 @@ ggplot(data = data.frame(map), aes(long, lat)) +
 
 # remove pollen cores from isolated locations (islands, mexico)
 bermuda <- compiled.cores[compiled.cores$lat < 34 & compiled.cores$long > -78, ]
-bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
-mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
-remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
-remove.sites <- remove.sites %>% distinct()
+# bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
+# mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
+# remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
+remove.sites <- bermuda %>% distinct()
 compiled.cores <- compiled.cores[!(compiled.cores$siteid) %in% remove.sites$siteid,]
 
 # convert projection to proj
@@ -140,7 +140,7 @@ tree.cores <- tree.cores[tree.cores$sum > 0, ]
 tree.cores <- tree.cores %>% dplyr::select(-sum)
 
 # specify which tree taxa to keep
-# use 13 taxa with highest relative proportions
+# use taxa with highest relative proportions
 props <- tree.cores[,start_col:ncol(tree.cores)]/rowSums(tree.cores[,13:ncol(tree.cores)], na.rm = TRUE)
 props <- pivot_longer(props, cols = colnames(props), names_to = 'taxon', values_to = 'props')
 props <- props %>% group_by(taxon) %>% summarise(props = sum(props))
@@ -242,10 +242,11 @@ for (i in 1:n_times){
   }
 }
 modern_locs <- modern_locs[,c('x','y')]
+taxa <- colnames(modern_time[[1]])[4:(4+n_taxa-1)]
 
 saveRDS(modern_dat_array, paste0('data/', 'modern_pollen_dat_', version, '.RDS'))
 saveRDS(modern_locs, paste0('data/', 'modern_pollen_locs_', version, '.RDS'))
-saveRDS(taxa.keep, paste0('data/', 'pollen_taxa_', version, '.RDS'))
+saveRDS(taxa, paste0('data/', 'pollen_taxa_', version, '.RDS'))
 
 
 # PALEO
