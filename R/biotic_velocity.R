@@ -144,9 +144,11 @@ sim <- raster('data/map-data/study_region_resampled_to_genetic_demographic_simul
 proj <- proj4string(sim)
 
 # read in fraxinus predictions at the LGM (use mean of iterations)
-grid <- readRDS('data/grid_Dec15.RDS')
-frax_preds <- readRDS('output/preds_frax_LGM_mean.RDS')
+grid <- readRDS('data/grid_3.0.RDS')
+frax_preds <- readRDS('output/preds_paleo_mean_frax.RDS')
 frax_df <- data.frame(cbind(frax_preds, grid))  # cbind means with locs
+frax_df <- frax_df[,c('X42','x','y')]  # use only LGM data
+names(frax_df) <- c('pred','x','y')
 
 # convert df to raster
 coordinates(frax_df) <- ~x + y
@@ -158,23 +160,23 @@ proj4string(frax_raster) <- proj
 # read in masking rasters, extract mask at LGM
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
 LGM <- stack$study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.1  # LGM
-LGM[LGM > 0.6] <- NA  # convert glacial values to NAs
+LGM[LGM == 1] <- NA  # convert glacial values to NAs
 LGM_resamp <- raster::resample(x = LGM, y = frax_raster)  # convert LGM to same res/extent as frax
 frax_masked <- mask(x = frax_raster, mask = LGM_resamp)
-
+saveRDS(frax_masked, 'output/LGM_frax_masked_for_refuge.RDS')
 
 # refuge locations
-refuge <- assign_refugia_from_abundance_raster(abund = frax_masked, 
-                                     sim = sim, quant = 0.9)
-plot(refuge)
+refuge <- assignRefugiaFromAbundanceRaster(abund = frax_masked, 
+                                     sim = sim, threshold = 0.02)
+plot(refuge$simulationScale)
 
 # convert refuge locations to dataframe so you can plot on a map
-refuge_df <- as.data.frame(refuge, xy = TRUE)
-refuge_df$id <- as.integer(refuge_df$id)
-refuge_df$id_fac <- as.factor(refuge_df$id)
+refuge_df <- as.data.frame(refuge$simulationScale, xy = TRUE)
+refuge_df$refugiaId <- as.integer(refuge_df$refugiaId)
+refuge_df$refugiaId_fac <- as.factor(refuge_df$refugiaId)
 
-hist(refuge_df$abundance, 
-     main = 'Pollen abund preds on refugia\n0.9 quantile threshold', 
+hist(refuge_df$refugiaAbund, 
+     main = 'Pollen abund preds on refugia\n0.02 rel abund threshold', 
      xlab = '',
      breaks = 10)
 
@@ -207,15 +209,15 @@ frax$time <- substr(frax$time, start = 2, stop = nchar(frax$time))
 frax$time <- as.integer(frax$time)
 
 ggplot(data = refuge_df) +
-  geom_tile(aes(x = x, y = y, fill = id_fac)) +
+  geom_tile(aes(x = x, y = y, fill = refugiaId_fac)) +
   scale_fill_discrete(na.value = 'white') +
   geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
   geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
   scale_y_continuous(limits = ylim) +
   scale_x_continuous(limits = xlim) +
-  geom_point(data = frax[frax$time == 21 & !is.na(frax$abund),], aes(x = x, y = y),
-             pch = 21, color = 'black', fill = 'black', alpha = 0.7, size = 3) +
-  labs(fill = 'Refuge ID', title = 'Threshold: 0.8 quantile \n6 refugia') +
+  # geom_point(data = frax[frax$time == 21 & !is.na(frax$abund),], aes(x = x, y = y),
+  #            pch = 21, color = 'black', fill = 'black', alpha = 0.7, size = 3) +
+  labs(fill = 'Refuge ID', title = 'Threshold: 0.02 rel abund \n1 refuge') +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, size = 14),
         axis.ticks = element_blank(),
@@ -292,29 +294,19 @@ for(i in 1:n_times){
   mask_list[[i]] <- raster::resample(mask_list[[i]], y = stack_list_c[[i]])
   mask_list[[i]] <- mask(mask_list[[i]], mask = stack_list_c[[i]])
 }
+
+# GET BIOTIC VELOCITY FROM INTERPOLATED/MASKED RASTERS
+mask_list <- rev(mask_list)
 mask_stack <- stack(mask_list)
 
-
-# THE PLOTS DON'T LOOK LIKE FRAXINUS DISTRIBUTIONS. 
-# I DOUBLE CHECKED THE PULL POLLEN CODE TO MAKE SURE MY TAXON LIST WAS CORRECT. LOOKS FINE.
-
-
-# GET BIOTIC VELOCITY FROM INTERPOLATED RASTERS
-interp_list <- unstack(interp)
-interp_list <- rev(interp_list)  # oldest needs to be on top
-
-# for not, just remove empty rasters
-interp_list <- interp_list[15:697]
-
-interp <- stack(interp_list)
-bv_times <- adam_times * -1
-bv_times <- bv_times[15:697]  # just for now, to get the function to work
-bvs <- bioticVelocity(interp, times = bv_times, onlyInSharedCells = TRUE)
+bv_times <- rev(adam_times * -1)
+bvs_interp <- bioticVelocity(mask_stack, times = bv_times, onlyInSharedCells = TRUE)
+saveRDS(bvs_interp, 'output/interp_bvs.RDS')
 
 minor_breaks <- rev(times$from) * -1
 breaks <- minor_breaks[seq(1,42, by = 2)]
 
-ggplot(data = bvs, aes(x = timeFrom, y = centroidVelocity)) +
+ggplot(data = bvs_interp, aes(x = timeFrom, y = centroidVelocity)) +
   geom_line() + 
   scale_x_continuous(minor_breaks = minor_breaks, breaks = breaks) +
   labs(x = 'Time from (years before present)', y = 'Centroid velocity (m/yr)') +
@@ -356,14 +348,23 @@ abline(h = 0, col = 'black', lwd = 2)
 
 # PLOT CENTROIDS OF FRAX RANGE OVER TIME ON MAP
 # use biotic velocity dataframe (bv)
-ggplot(data = bv) +
-  geom_point(aes(x = centroidLong, y = centroidLat, color = timeTo),
-             size = 4, alpha = 0.9) +
+bvs <- readRDS('output/no-interp_bvs.RDS')
+ggplot(data = bvs) +
+  geom_point(aes(x = centroidLong, y = centroidLat, fill = timeTo),
+             size = 4, alpha = 0.9, pch = 21) +
+  # geom_text(aes(x = centroidLong, y = centroidLat, 
+  #               label = ifelse(timeTo > -7000, as.character(timeTo),''))) +
+  geom_label_repel(aes(x = centroidLong, y = centroidLat, 
+                       label = ifelse(timeTo > -3000, as.character(timeTo),'')),
+                   box.padding   = 0.5,
+                   point.padding = 0.5,
+                   segment.color = 'red',
+                   max.overlaps = 30) +
   geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
-  scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  # labs(title = paste0(i, ',000 YBP'), fill = 'SDs of \nrel prop') +
+  scale_y_continuous(limits = c(-700000,1500000)) +
+  scale_x_continuous(limits = c(-500000,2500000)) +
+  labs(title = 'Centroid BVs (no interpolation)') +
   theme_classic() +
   theme(axis.ticks = element_blank(),
         axis.text = element_blank(),
@@ -374,6 +375,24 @@ ggplot(data = bv) +
         plot.title = element_text(size = 16)) +
   coord_equal()
 
+bvs_interp <- readRDS('output/interp_bvs.RDS')
+ggplot(data = bvs_interp) +
+  geom_point(aes(x = centroidLong, y = centroidLat, fill = timeTo),
+             size = 4, alpha = 0.9, pch = 21) +
+  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
+  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
+  scale_y_continuous(limits = c(-700000,1500000)) +
+  scale_x_continuous(limits = c(-500000,2500000)) +
+  labs(title = 'Centroid BVs (no interpolation)') +
+  theme_classic() +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        line = element_blank(),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14),
+        plot.title = element_text(size = 16)) +
+  coord_equal()
 
 
 # INSTALLING MOST RECENT VERSION OF ENMSDM

@@ -7,7 +7,7 @@ library(rgdal)
 library(raster)
 library(fields)
 
-run='Oct12_matern'
+version <- '3.0'
 
 # dir.create(file.path('figures'), showWarnings = FALSE)
 
@@ -21,12 +21,7 @@ bbox_tran <- function(x, coord_formula = '~ x + y', from, to) {
 
 #### READ MAP DATA ####
 # getting data ready
-proj_out <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5
-+lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
-
-# WGS84
-proj_WGS84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84
-+towgs84=0,0,0"
+proj_out <- '+proj=aea +lat_0=37.5 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs'
 
 na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
 na_shp <- sp::spTransform(na_shp, proj_out)
@@ -36,8 +31,8 @@ lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj_out)
 
 #### READ IN MODEL DATA AND OUTPUT ####
-out = readRDS(paste0('output/polya-gamma-posts_', run,'.RDS'))
-dat = readRDS( paste0('output/polya-gamma-dat_', run,'.RDS'))
+out = readRDS(paste0('output/polya-gamma-posts_modern', version,'.RDS'))
+dat = readRDS( paste0('output/polya-gamma-dat_modern', version,'.RDS'))
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -97,11 +92,15 @@ for (j in 1:(J-1)){
 
 ggplot(data=cov_df) + 
   geom_line(aes(x=distance, y=covar, color=taxon), size=2) +
+  scale_color_brewer(palette = "Paired") +
   theme_bw() +
   xlim(c(0,500)) + 
   xlab("Distance (km)") + 
-  ylab("Covariance")
-ggsave(paste0("figures/covariance_vs_distance_", run, ".pdf"))#, device="pdf", type="cairo")
+  ylab("Covariance") +
+  theme(legend.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12))
+ggsave(paste0("figures/covariance_vs_distance_", version, ".pdf"))#, device="pdf", type="cairo")
 
 
 ###############################################################################################################################
@@ -111,14 +110,18 @@ ggsave(paste0("figures/covariance_vs_distance_", run, ".pdf"))#, device="pdf", t
 # tau
 tau_melt = reshape2::melt(tau2)
 colnames(tau_melt) = c('iter', 'taxon', 'value')
-taxa <- readRDS('data/pollen_taxa_Dec15.RDS')
+
 taxa <- data.frame(taxa.id = 1:13, taxa = taxa)
 tau_melt <- merge(tau_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 ggplot() + 
-  geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)), size = 1.5) + 
+  geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)), size = 0.5) + 
+  scale_color_brewer(palette = "Paired") +
   theme_bw() +
+  theme(legend.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12)) +
   guides(color = guide_legend(override.aes = list(size = 4)))
-ggsave(paste0("figures/trace_tau_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/trace_tau_", version, ".png"), device="png", type="cairo")
 
 # theta
 theta_melt = reshape2::melt(theta)
@@ -126,24 +129,30 @@ colnames(theta_melt) = c('iter', 'taxon', 'number', 'value')
 theta_melt <- merge(theta_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=theta_melt) + 
-  geom_line(aes(x=iter, y=exp(value), color=factor(taxa)), size = 1.5) +
+  geom_line(aes(x=iter, y=exp(value), color=factor(taxa)), size = 0.5) +
+  scale_color_brewer(palette = "Paired") +
   theme_bw() +
+  theme(legend.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12)) +
   facet_grid(number~., scales="free_y") +
   guides(color = guide_legend(override.aes = list(size = 4)))
-ggsave(paste0("figures/trace_theta_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/trace_theta_", version, ".png"), device="png", type="cairo")
 
 # mu
 mu_melt = reshape2::melt(beta)
 colnames(mu_melt) = c('iter', 'taxon', 'value')
-mu_melt$taxon = taxa[mu_melt$taxon]
 mu_melt <- merge(mu_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=mu_melt) + 
   geom_line(aes(x=iter, y=value, color=taxa)) +
+  scale_color_brewer(palette = "Paired") +
   theme_bw() +
+  theme(legend.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12)) +
   guides(color = guide_legend(override.aes = list(size = 4)))
-
-ggsave(paste0("figures/trace_mu_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/trace_mu_", version, ".png"), device="png", type="cairo")
 
 ###############################################################################################################################
 ## maps
@@ -216,8 +225,8 @@ some <- c('Picea', 'Betula', 'Fraxinus', 'Quercus')
 all_melt_plot <- all_melt[all_melt$taxon %in% some, ]
 
 
-pdf(paste0("figures/all_binned_by_time_Oct12_4taxa_4times.pdf"))
-for (tt in seq(1, N_times, by = 6)){
+pdf(paste0("figures/all_binned_by_time_4taxa_4times.pdf"))
+for (tt in 1:N_times){
   sub_melt = all_melt_plot[which(all_melt_plot$time == tt),]
   p <- ggplot() + 
     geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
@@ -242,11 +251,11 @@ for (tt in seq(1, N_times, by = 6)){
           # plot.title = element_blank()) +
     coord_equal()
   print(p)
-  # ggsave(paste0("../figs/all_binned_", run, "_time", tt, ".png"), device="png", type="cairo")
+  # ggsave(paste0("../figs/all_binned_", version, "_time", tt, ".png"), device="png", type="cairo")
 }
 dev.off()
 
-png(paste0("figures/all_binned_tiled_", run, "_by_time.png"))
+png(paste0("figures/all_binned_tiled_", version, "_by_time.png"))
 for (tt in 1:N_times){
   sub_melt = all_melt[which(all_melt$time == tt),]
 p <- ggplot() + 
@@ -270,7 +279,7 @@ p <- ggplot() +
         plot.title = element_blank()) +
   coord_equal()
 print(p)
-# ggsave(paste0("figures/all_binned_tiled_", run, ".png"), device="png", type="cairo")
+# ggsave(paste0("figures/all_binned_tiled_", version, ".png"), device="png", type="cairo")
 }
 dev.off()
 
@@ -291,4 +300,4 @@ ggplot(data=foo) +
   ylab("Predicted proportions") +
   geom_abline(intercept=0, slope=1) + 
   facet_wrap(~taxon)
-ggsave(paste0("figures/props_obs_vs_preds_", run, ".png"), device="png", type="cairo")
+ggsave(paste0("figures/props_obs_vs_preds_", version, ".png"), device="png", type="cairo")
