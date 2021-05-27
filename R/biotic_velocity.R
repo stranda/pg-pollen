@@ -143,32 +143,72 @@ ggplot(bv, aes(x = timeTo, y = centroidVelocity)) +
 sim <- raster('data/map-data/study_region_resampled_to_genetic_demographic_simulation_resolution.tif')
 proj <- proj4string(sim)
 
-# read in fraxinus predictions at the LGM (use mean of iterations)
+# read in fraxinus predictions at the LGM for each of the 50 iterations
 grid <- readRDS('data/grid_3.0.RDS')
-frax_preds <- readRDS('output/preds_paleo_mean_frax.RDS')
-frax_df <- data.frame(cbind(frax_preds, grid))  # cbind means with locs
-frax_df <- frax_df[,c('X42','x','y')]  # use only LGM data
-names(frax_df) <- c('pred','x','y')
+frax_lgm <- readRDS('output/preds_paleo_n50_3.0.RDS')
+frax_lgm <- frax_lgm[,,42]
+
+n_iter <- 50
+lgm_list <- list()
+for(i in 1:n_iter){
+  lgm_list[[i]] <- data.frame(cbind(grid, frax_lgm[i,]))
+  names(lgm_list[[i]]) <- c('x','y','pred')
+}
 
 # convert df to raster
-coordinates(frax_df) <- ~x + y
-gridded(frax_df) <- TRUE
-frax_raster <- raster(frax_df)
-proj4string(frax_raster) <- proj
+lgm_raster <- list()
+for(i in 1:n_iter){
+  lgm_raster[[i]] <- rasterFromXYZ(lgm_list[[i]], crs = CRS(proj))
+}
+
 
 # mask out glacial coverage and lakes/ocean
 # read in masking rasters, extract mask at LGM
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
 LGM <- stack$study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.1  # LGM
 LGM[LGM == 1] <- NA  # convert glacial values to NAs
-LGM_resamp <- raster::resample(x = LGM, y = frax_raster)  # convert LGM to same res/extent as frax
-frax_masked <- mask(x = frax_raster, mask = LGM_resamp)
-saveRDS(frax_masked, 'output/LGM_frax_masked_for_refuge.RDS')
+
+lgm_resamp <- list()
+for(i in 1:n_iter){
+  lgm_resamp[[i]] <- raster::resample(x = lgm_raster[[i]], y = LGM)
+  lgm_resamp[[i]] <- mask(x = lgm_resamp[[i]], mask = LGM)
+}
+saveRDS(lgm_resamp, 'output/lgm_frax_masked_for_refuge_n50.RDS')
 
 # refuge locations
-refuge <- assignRefugiaFromAbundanceRaster(abund = frax_masked, 
-                                     sim = sim, threshold = 0.02)
-plot(refuge$simulationScale)
+refuge_list <- list()
+for(i in 1:n_iter){
+  refuge_list[[i]] <- assignRefugiaFromAbundanceRaster(abund = lgm_resamp[[i]],
+                                                       sim = sim, threshold = 0.01)
+}
+
+# check to make sure all iterations have been assigned a refuge
+test <- rep(NA, n_iter)
+for(i in 1:n_iter){
+  test[i] <- refuge_list[[i]]$meanRefugeAbund
+}
+anyNA(test)  # should be FALSE
+
+# save as list of rasters
+refuge_for_allan <- list()
+for(i in 1:n_iter){
+  refuge_for_allan[[i]] <- refuge_list[[i]][["simulationScale"]]@layers[[2]]
+}
+saveRDS(refuge_for_allan, 'output/refuge_rasters_n50.RDS')
+
+# check out all refugia plots
+for(i in 1:n_iter){
+  jpeg(paste('figures/refugia_gif/iter', i, '.jpeg', sep = ''))
+  plot(refuge_list[[i]]$simulationScale@layers[[2]])
+  dev.off()
+}
+# make gif of plots
+require(magick)
+frames <- paste('figures/refugia_gif/iter', 1:50, '.jpeg', sep = '')
+m <- image_read(frames)
+m <- image_animate(m, fps = 1)
+image_write(m, "figures/refugia_gif/refugia_n50.gif")
+
 
 # convert refuge locations to dataframe so you can plot on a map
 refuge_df <- as.data.frame(refuge$simulationScale, xy = TRUE)
@@ -217,7 +257,7 @@ ggplot(data = refuge_df) +
   scale_x_continuous(limits = xlim) +
   # geom_point(data = frax[frax$time == 21 & !is.na(frax$abund),], aes(x = x, y = y),
   #            pch = 21, color = 'black', fill = 'black', alpha = 0.7, size = 3) +
-  labs(fill = 'Refuge ID', title = 'Threshold: 0.02 rel abund \n1 refuge') +
+  labs(fill = 'Refuge ID', title = 'Threshold: 0.04 rel abund \n2 refugia') +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, size = 14),
         axis.ticks = element_blank(),
@@ -228,7 +268,7 @@ ggplot(data = refuge_df) +
         # legend.text = element_text(size = 14),
         legend.position = 'none') +
   coord_equal()
-
+ggsave('figures/frax_refuge_0.04threshold_map.png')
 
 
 
@@ -263,6 +303,7 @@ for(i in 1:n_times){
 }
 
 all_list <- c(modern_list, paleo_list)
+# saveRDS(all_list, 'output/preds_mean_frax_all_times_rasters.RDS')
 
 # MASK OUT SEAS, LAKES, ICE
 # rasterstack masks are arranged LGM (item 1) to modern (item 701)
@@ -286,6 +327,7 @@ adam_times <- seq(0, 700, 1) * 30
 all_stack <- stack(all_list)
 interp <- interpolateRasters(all_stack, interpFrom = times, interpTo = adam_times)
 interp_list <- unstack(interp)
+# saveRDS(interp, 'output/interp_preds_mean_frax_rasterstack.RDS')
 
 # mask out ice/water
 n_times <- length(stack_list_c)
