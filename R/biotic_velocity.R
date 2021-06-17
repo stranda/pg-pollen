@@ -12,126 +12,101 @@ require(dplyr)
 require(holoSimCell)
 
 setwd('C:/Users/abrow/Documents/pg-pollen')
-version <- 'Dec15'
+version <- '3.0'
 
-#### READ IN DATA ####
-# read in raw data
-dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
-taxa <- dat$taxa.keep
-# frax_num <- which(taxa == 'Fraxinus')
-
-# read in prediction grid locations
+#### READ IN FRAXINUS DATA ####
+# prediction grid, paleo/modern predictions
 locs_grid <- readRDS(paste0('data/grid_', version, '.RDS'))
+preds_paleo <- readRDS('output/preds_paleo_n50_3.0.RDS')
+preds_mod <- readRDS('output/preds_modern_n50_3.0.RDS')
+preds <- array(c(preds_mod, preds_paleo), dim = c(50, 3951, 46))
 
-# read in predictions from all simulations (ie, not summarized as mean/median)
-preds <- readRDS(paste0('output/preds_', version, '_all_taxa_n20.RDS'))
+modern_bins <- seq(-50, 149, by = 50)
+paleo_bins <- seq(150, by = 500, length.out = 43)
+time <- c(modern_bins, paleo_bins)
+time <- data.frame(timeFrom = time[-47], timeTo = time[-1])
+time$time_mid <- (time$timeFrom + time$timeTo) / 2  # to get midpoint of time bins
+time$time_mid <- time$time_mid + 25  # to align with 0 start date
 
 
 # read raster masks (provides masks for spatial domain/resolution of genetic + ENM data)
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
-names(stack) <- 1:701
-sub <- seq(1, 701, by = 33)
-stack_sub <- subset(stack, subset = paste0('X', sub))  # only want mask every 990 years
-stack_sub[stack_sub > 0.6] <- NA
 proj <- proj4string(stack)
+stack_times <- rev(seq(0, by = 30, length.out = 701))
+time$closest <- NA
+for(i in 1:nrow(time)){
+  time$closest[i] <- which.min(abs(stack_times - time$time_mid[i]))
+}
+# stack_times_sub <- stack_times[time$closest]
+# time$closest_time <- stack_times_sub
+stack_list <- unstack(stack)
+stack_sub <- stack_list[time$closest]
+
+for(i in 1:length(stack_sub)){
+  stack_sub[[i]][stack_sub[[i]] == 1] <- NA  # convert areas completely covered by ice to NAs
+}
+
 
 
 #### DATA PREPARATION ####
-# convert rasterstack masks into list of rasters, reverse order of items to correspond with pollen time
-mask_list <- unstack(stack_sub)
-mask_names <- NA
-for(i in 1:n_times){
-  mask_names[i] <- names(mask_list[[i]])
-  mask_names[i] <- as.integer(substr(mask_names[i], start = 2, stop = nchar(mask_names[i]))) * 30
-}
-mask_names <- rev(mask_names)
-names(mask_list) <- mask_names
-mask_list <- rev(mask_list)
-
 # convert prediction array to list of rasterstacks
 n_iter <- dim(preds)[1]
-n_taxa <- dim(preds)[3]
-n_times <- dim(preds)[4]
+n_times <- dim(preds)[3]
 
-# this takes about a minute to run with dimensions [20, 7221, 14, 22]
-preds_list <- rep(list(list()), n_taxa) 
-for(i in 1:n_taxa){
-  for(j in 1:n_iter){
-    preds_list[[i]][[j]] <- cbind(locs_grid, data.frame(preds[j,,i,]))
-    preds_list[[i]][[j]] <- pivot_longer(preds_list[[i]][[j]], cols = 3:ncol(preds_list[[i]][[j]]),
+preds_list <- list() 
+for(i in 1:n_iter){
+    preds_list[[i]] <- cbind(locs_grid, data.frame(preds[i,,]))
+    preds_list[[i]] <- pivot_longer(preds_list[[i]], cols = 3:ncol(preds_list[[i]]),
                                          names_to = 'time', values_to = 'pred')
-    preds_list[[i]][[j]]$time <- as.integer(substr(preds_list[[i]][[j]]$time, start = 2, 
-                                                 stop = nchar(preds_list[[i]][[j]]$time)))
-    preds_list[[i]][[j]] <- split(preds_list[[i]][[j]], f = preds_list[[i]][[j]]$time)
-    preds_list[[i]][[j]] <- lapply(preds_list[[i]][[j]], function(x) { x['time'] <- NULL; x })
-  }
+    preds_list[[i]]$time <- as.integer(substr(preds_list[[i]]$time, start = 2, 
+                                                 stop = nchar(preds_list[[i]]$time)))
+    preds_list[[i]] <- split(preds_list[[i]], f = preds_list[[i]]$time)
+    preds_list[[i]] <- lapply(preds_list[[i]], function(x) { x['time'] <- NULL; x })
 }
 
-# takes about 20 minutes to run with dimensions [20, 7221, 14, 22]
+
+# takes about 2 minutes to run with dimensions [50, 3951, 46]
 rasterstack_list <- preds_list
-for(i in 1:n_taxa){
-  for(j in 1:n_iter){
-    for(k in 1:n_times){
-      rasterstack_list[[i]][[j]][[k]] <- rasterFromXYZ(rasterstack_list[[i]][[j]][[k]])
-      proj4string(rasterstack_list[[i]][[j]][[k]]) <- proj
-      rasterstack_list[[i]][[j]][[k]] <- resample(rasterstack_list[[i]][[j]][[k]], y = mask_list[[k]])
-      rasterstack_list[[i]][[j]][[k]] <- mask(rasterstack_list[[i]][[j]][[k]], mask = mask_list[[k]])
-    }
+for(i in 1:n_iter){
+  for(j in 1:n_times){
+      rasterstack_list[[i]][[j]] <- rasterFromXYZ(rasterstack_list[[i]][[j]])
+      proj4string(rasterstack_list[[i]][[j]]) <- proj
+      rasterstack_list[[i]][[j]] <- resample(rasterstack_list[[i]][[j]], y = stack_sub[[j]])
+      rasterstack_list[[i]][[j]] <- mask(rasterstack_list[[i]][[j]], mask = stack_sub[[j]])
   }
 }
 
 # convert list of rasters into raster stack
-for(i in 1:n_taxa){
-  for(j in 1:n_iter){
-    rasterstack_list[[i]][[j]] <- raster::stack(rasterstack_list[[i]][[j]])
-  }
+for(i in 1:n_iter){
+    rasterstack_list[[i]] <- raster::stack(rasterstack_list[[i]])
 }
-saveRDS(rasterstack_list, 'output/preds_rasterstack_list_for_bv_calc.RDS')
+saveRDS(rasterstack_list, 'output/rasterstacks_for_bv_calc_n50.RDS')
 
 
 ##############################################
 ## CALCULATE AND PLOT BIOTIC VELOCITIES
 ##############################################
-# iterate bioticVelocity function through each iteration
-# sub <- seq(1, 701, by = 33)
-times <- rev(-(sub * 30))
-
-bv_list <- replicate(n_taxa, list(replicate(n_iter, list())))
-bv_list <- replicate(n_taxa, list(replicate(n_iter, data.frame())))
-
-for(i in 1:n_taxa){
-  for(j in 1:n_iter){
-    bv_list[[i]][[j]] <- bioticVelocity(rasterstack_list[[i]][[j]],
-                                 times = times,
+# iterate bioticVelocity function through each iteration (takes ~6 minutes)
+bv_list <- list()
+for(i in 1:n_iter){
+    bv_list[[i]] <- bioticVelocity(rasterstack_list[[i]],
+                                 times = time$time_mid,
                                  onlyInSharedCells = TRUE)
-  }
 }
-# 12:50 - 12:58
 
-
-# LEFT OFF HERE
-# STUCK ON ABOVE LOOP - GIVES ERROR: 
-# Error in array(x, c(length(x), 1L), if (!is.null(names(x))) list(names(x),  : 
-# length of 'dimnames' [1] not equal to array extent
-
+for(i in 1:n_iter){
+  bv_list[[i]]$iter <- i
+}
+bvs <- bind_rows(bv_list)
+saveRDS(bvs, 'output/no_interp_bvs_n50.RDS')
 
 #### PLOT BVS WITH UNCERTAINTY ####
+bvs$median_time <- as.factor((bvs$timeFrom + bvs$timeTo) / 2)
 
-bv_list2 <- bv_list
-for(i in 1:n_taxa){
-  bv_list2[[i]] <- bind_rows(bv_list[[i]])
-}
+ggplot(bvs, aes(x = median_time, y = centroidVelocity)) +
+  geom_boxplot() + 
+  theme_classic()
 
-bv$timeTo <- as.factor(bv$timeTo)
-
-par(mfrow = c(5,5))
-for(i in 1:20){
-  h <- hist(bv[levels(bv$timeTo)[i],]$centroidVelocity)
-  print(h)
-}
-
-ggplot(bv, aes(x = timeTo, y = centroidVelocity)) +
-  geom_boxplot()
 
 
 
@@ -360,6 +335,123 @@ ggsave('figures/bvs_after_30yr_interp.png')
 
 
 
+
+# PLOT BV FOR ALL 5 METHODS
+require(gridExtra)
+# read bv data
+setwd('C:/Users/abrow/Documents/green_ash')
+abc_enm <- read.csv('BV table ENM nnet_0.1.csv', stringsAsFactors = FALSE)
+abc <- read.csv('BV table NAIVE nnet_0.1.csv', stringsAsFactors = FALSE)
+abc_pollen <- read.csv('BV_table_POLLEN_nnet_0.1.csv', stringsAsFactors = FALSE)
+load('biotic_velocities.rda')
+enm <- velocities
+
+setwd('C:/Users/abrow/Documents/pg-pollen')
+pollen <- readRDS('output/no_interp_bvs_n50.RDS')
+
+# calculate midpoint of time range for each dataset (if it doesn't already exist)
+abc$timeFrom <- as.numeric(sub('-.*', '', abc$time))
+abc$timeTo <- as.numeric(sub('.*-', '', abc$time))
+abc$median_time <- (abc$timeFrom + abc$timeTo) / 2
+
+abc_enm$timeFrom <- as.numeric(sub('-.*', '', abc_enm$time))
+abc_enm$timeTo <- as.numeric(sub('.*-', '', abc_enm$time))
+abc_enm$median_time <- (abc_enm$timeFrom + abc_enm$timeTo) / 2
+
+abc_pollen$timeFrom <- as.numeric(sub('-.*', '', abc_pollen$time))
+abc_pollen$timeTo <- as.numeric(sub('.*-', '', abc_pollen$time))
+abc_pollen$median_time <- (abc_pollen$timeFrom + abc_pollen$timeTo) / 2
+
+enm$median_time <- (abs(enm$timeFrom) + abs(enm$timeTo)) / 2
+
+# plot
+# pollen
+# for now, use 21 times most closely associated with 990-yr intervals
+levels_use <- seq(5, 46, by = 2)
+times_use <- levels(bvs$median_time)[levels_use]
+bvs_sub <- bvs %>% filter(median_time %in% times_use)
+bvs_sub$median_time <- droplevels(bvs_sub$median_time)
+
+plot_pollen <- ggplot(bvs_sub, aes(x = median_time, y = centroidVelocity)) +
+  geom_boxplot() + 
+  ylab('\n ') +
+  geom_text(x = 3, y = 1850, label = 'Pollen', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        # axis.text.x = element_blank(),
+        axis.title.y = element_text(size = 10),
+        axis.text.y = element_text(size = 12))
+
+# enm
+enm_sub <- enm %>% filter(timeSpan == 990)
+enm_sub$median_time <- as.factor(enm_sub$median_time)
+
+plot_enm <- ggplot(enm_sub, aes(x = median_time, y = centroidVelocity)) + 
+  geom_boxplot() + 
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        # axis.text.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# abc naive
+abc$median_timeF <- as.factor(abc$median_time)
+
+plot_abc <- ggplot(abc, aes(x = median_time, y = BVcent))+ 
+  geom_boxplot(middle = abc$BVcent, 
+               lower = abc$BVcent0p025,
+               upper = abc$BVcent0p975)+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('Centroid BV (m/yr)\n') +
+  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        # axis.text.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# abc-enm
+abc_enm$median_time <- as.factor(abc_enm$median_time)
+
+plot_abc_enm <- ggplot(abc_enm, aes(x = median_time, y = BVcent))+ 
+  geom_boxplot(middle = abc_enm$BVcent, 
+               lower = abc_enm$BVcent0p025,
+               upper = abc_enm$BVcent0p975)+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  xlab('Years before present') +
+  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 14),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 0.5),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# abc-pollen
+abc_pollen$median_time <- as.factor(abc_pollen$median_time)
+
+plot_abc_pollen <- ggplot(abc_pollen, aes(x = median_time, y = BVcent))+ 
+  geom_boxplot(middle = abc_pollen$BVcent, 
+               lower = abc_pollen$BVcent0p025,
+               upper = abc_pollen$BVcent0p975)+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        # axis.text.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# grid.arrange(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, ncol = 1)
+g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
+                 ncol = 1, heights = c(1,1,1,1,1.35))
+ggsave(file = 'figures/BVs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
+
+
 # OLD CODE
 
 # CALCULATE BV USING FRAX PREDS
@@ -444,3 +536,46 @@ install.packages('C:/Users/abrow/Desktop/postdoc/enmSdm_0.5.2.9.zip', lib='C:/Us
 
 install.packages('C:/Users/abrow/Desktop/postdoc/omnibus_0.3.4.7.zip', lib='C:/Users/abrow/Documents/R/win-library/4.0',repos = NULL)
 install.packages('C:/Users/abrow/Desktop/postdoc/statisfactory_0.3.4.zip', lib='C:/Users/abrow/Documents/R/win-library/4.0',repos = NULL)
+
+
+
+# OLD CODE, BUT MIGHT USE AGAIN - FOR DEALING WITH 4D ARRAY OF PREDS USING ALL TAXA
+# convert prediction array to list of rasterstacks
+n_iter <- dim(preds)[1]
+n_taxa <- dim(preds)[3]
+n_times <- dim(preds)[4]
+
+# this takes about a minute to run with dimensions [20, 7221, 14, 22]
+preds_list <- rep(list(list()), n_taxa) 
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    preds_list[[i]][[j]] <- cbind(locs_grid, data.frame(preds[j,,i,]))
+    preds_list[[i]][[j]] <- pivot_longer(preds_list[[i]][[j]], cols = 3:ncol(preds_list[[i]][[j]]),
+                                         names_to = 'time', values_to = 'pred')
+    preds_list[[i]][[j]]$time <- as.integer(substr(preds_list[[i]][[j]]$time, start = 2, 
+                                                   stop = nchar(preds_list[[i]][[j]]$time)))
+    preds_list[[i]][[j]] <- split(preds_list[[i]][[j]], f = preds_list[[i]][[j]]$time)
+    preds_list[[i]][[j]] <- lapply(preds_list[[i]][[j]], function(x) { x['time'] <- NULL; x })
+  }
+}
+
+# takes about 20 minutes to run with dimensions [20, 7221, 14, 22]
+rasterstack_list <- preds_list
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    for(k in 1:n_times){
+      rasterstack_list[[i]][[j]][[k]] <- rasterFromXYZ(rasterstack_list[[i]][[j]][[k]])
+      proj4string(rasterstack_list[[i]][[j]][[k]]) <- proj
+      rasterstack_list[[i]][[j]][[k]] <- resample(rasterstack_list[[i]][[j]][[k]], y = mask_list[[k]])
+      rasterstack_list[[i]][[j]][[k]] <- mask(rasterstack_list[[i]][[j]][[k]], mask = mask_list[[k]])
+    }
+  }
+}
+
+# convert list of rasters into raster stack
+for(i in 1:n_taxa){
+  for(j in 1:n_iter){
+    rasterstack_list[[i]][[j]] <- raster::stack(rasterstack_list[[i]][[j]])
+  }
+}
+saveRDS(rasterstack_list, 'output/preds_rasterstack_list_for_bv_calc.RDS')
