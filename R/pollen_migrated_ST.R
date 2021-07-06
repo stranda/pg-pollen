@@ -12,7 +12,7 @@ library(dplyr)
 library(tidyr)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version = '3.0'
+version = '3.1'  # v. 3.1 is where we use time bins parallel to those of ABC, ENM
 
 # READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
 # USA Contiguous albers equal area
@@ -62,7 +62,6 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             lat1 = lat_hi, 
             xlim = c(long_west, long_east),
             ylim = c(lat_lo, lat_hi))
-
 
 # until there's an answer as to why we get age NAs after running 'compile_downloads'...
 # for now just remove rows with age NAs
@@ -149,8 +148,22 @@ taxa.keep <- props[1:13, ]
 taxa.keep <- as.character(taxa.keep$taxon)
 
 # ASSIGN TIME CHUNKS
+# Old time chunks: 
 # Modern time = AD 1800 - 2000 (i.e., 150 to -50 YBP)
 # Paleo time = 21,000 - 150 YBP
+
+# New time chunks: 
+# Modern = 1980 AD (to match ENM data) = -30 ybp in pollen data (so add 30 years to age)
+# first time chunk: 210 - 1200 ybp
+# every 990 years for 21 time chunks (until 21000 ybp)
+tree.cores$age <- tree.cores$age + 30
+
+setwd('C:/Users/abrow/Documents/green_ash')
+bins <- read.csv('BV_table_Pollen_nnet_0.1.csv', stringsAsFactors = FALSE)
+bins <- bins %>% tidyr::separate(time, c("timeTo", "timeFrom"))
+bins$timeTo <- as.numeric(bins$timeTo)
+bins$timeFrom <- as.numeric(bins$timeFrom)
+
 
 # MODERN TIME
 modern <- tree.cores[tree.cores$age >= -50 & tree.cores$age < 150, ]
@@ -166,8 +179,8 @@ modern_xyid$id <- as.character(seq(1, nrow(modern_xyid), by = 1))
 modern_time <- split(modern, f = modern$cut)
 
 # PALEO TIME
-paleo <- tree.cores[tree.cores$age >= 150, ]
-paleo_bins <- seq(150, max(paleo$age), by = 500)
+paleo <- tree.cores[tree.cores$age >= 210, ]
+paleo_bins <- seq(210, 21000, by = 990)
 paleo_cut <- cut(paleo$age, include.lowest = TRUE, breaks = paleo_bins)
 paleo$cut <- as.integer(paleo_cut)
 paleo <- paleo[!is.na(paleo$cut),] # remove ages > highest time bin
@@ -190,7 +203,7 @@ paleo_time <- split(paleo, f = paleo$cut)
 n_times <- length(modern_time)
 for(i in 1:n_times){
   compiled.meta = modern_time[[i]][,c('x', 'y')]
-  compiled.counts = modern_time[[i]][,13:ncol(modern_time[[i]])]
+  compiled.counts = modern_time[[i]][,start_col:(ncol(modern_time[[i]])-1)]
   compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
                                           (!(colnames(compiled.counts) %in% taxa.nontree)))]
   compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)],
@@ -210,7 +223,7 @@ for(i in 1:n_times){
 n_times <- length(paleo_time)
 for(i in 1:n_times){
   compiled.meta = paleo_time[[i]][,c('x', 'y')]
-  compiled.counts = paleo_time[[i]][,13:ncol(paleo_time[[i]])]
+  compiled.counts = paleo_time[[i]][,start_col:(ncol(paleo_time[[i]])-1)]
   compiled.other = compiled.counts[, which((!(colnames(compiled.counts) %in% taxa.keep)) & 
                                              (!(colnames(compiled.counts) %in% taxa.nontree)))]
   compiled.counts.sub = data.frame(compiled.counts[, which(colnames(compiled.counts) %in% taxa.keep)],
@@ -221,7 +234,7 @@ for(i in 1:n_times){
 for(i in 1:n_times){
   paleo_time[[i]] <- paleo_time[[i]] %>% group_by(x, y) %>% summarise_all(.funs = sum, na.rm = TRUE)
   paleo_time[[i]] <- ungroup(paleo_time[[i]])
-  paleo_time[[i]] <- left_join(modern_xyid, paleo_time[[i]], by = c('x','y'))
+  paleo_time[[i]] <- left_join(paleo_xyid, paleo_time[[i]], by = c('x','y'))
   paleo_time[[i]][,4:ncol(paleo_time[[i]])] <- apply(paleo_time[[i]][,4:ncol(paleo_time[[i]])], c(1,2), as.integer)
 }
 
@@ -253,6 +266,7 @@ saveRDS(taxa, paste0('data/', 'pollen_taxa_', version, '.RDS'))
 paleo_locs <- paleo_time[[1]][,c('x','y','id')]
 n_locs <- nrow(paleo_locs)
 n_times <- length(paleo_time)
+n_taxa <- length(taxa.keep)
 
 paleo_dat_array <- array(0, dim = c(n_locs, n_taxa, n_times))
 for (i in 1:n_times){
