@@ -18,12 +18,12 @@ library(data.table)
 # install.packages("/home/adawson/Documents/projects/pgR", repos=NULL, type="source")
 library(pgR)
 
-version='Dec15'
+version='3.1'  # v. 3.1 uses same time bins as ABC, ENM, and uses updated priors
 
 #### DATA PREP ####
-y <- readRDS(paste0('data/', 'pollen_dat_', version, '.RDS'))
+y <- readRDS(paste0('data/', 'paleo_pollen_dat_', version, '.RDS'))
 taxa.keep <- readRDS(paste0('data/', 'pollen_taxa_', version, '.RDS'))
-locs <- readRDS(paste0('data/', 'pollen_locs_', version, '.RDS'))
+locs <- readRDS(paste0('data/', 'paleo_pollen_locs_', version, '.RDS'))
 rescale <- 1e3
 
 #### RUNNING THE MODEL & SAVING OUTPUT####
@@ -33,8 +33,8 @@ N_locs_dat = nrow(locs_scaled)
 X <- matrix(rep(1, N_locs_dat),N_locs_dat, 1)
 
 params <- default_params()
-params$n_adapt <- 1000
-params$n_mcmc <- 1800
+params$n_adapt <- 500
+params$n_mcmc <- 1000
 params$n_message <- 100
 params$n_thin <- 1
 priors <- default_priors_pg_stlm(y, X, corr_fun = "matern")
@@ -58,12 +58,14 @@ priors <- default_priors_pg_stlm(y, X, corr_fun = "matern")
 # [1] 10
 
 # mu_sigma_prop    = 1
-priors$mean_nu     = -0.9
+priors$mean_nu     = -0.7  # change from -0.9 to -0.7 on 6/29/21
 priors$sd_nu       = sqrt(0.005)
-priors$mean_range  = 4.6
+priors$mean_range  = 7  # change from 4.6 to 7 on 6/29/21
 priors$sd_range    = sqrt(0.2)
-# priors$alpha_tau  = 0.5
-# priors$beta_tau   = 10
+priors$alpha_tau   = 2  # changed from default to 2
+priors$beta_tau    = 1  # changed from default to 1
+priors$mu_beta     = -5  # changed from default to -5 on 6/29/21
+priors$Sigma_beta  = 0.5  # changed from default to 0.5 on 6/29/21
 
 J <- ncol(y)
 theta_mean <- c(priors$mean_range, priors$mean_nu)
@@ -73,7 +75,7 @@ inits <- list(
   beta  = t(mvnfast::rmvn(J-1, priors$mu_beta, priors$Sigma_beta)),
   tau2  = rgamma(J-1, priors$alpha_tau, priors$beta_tau),
   theta = mvnfast::rmvn(J-1, theta_mean, theta_var),
-  rho = runif(1, 0, 1)
+  rho = 0.8  # changed from runif(1, 0, 1) to 0.8 on 6/29
 )
 
 # XXX: need this to work around undefined variable in pgSPLM
@@ -96,22 +98,22 @@ for (n in 1:dim(Y)[1]){
 }
 
 # code to run matern model
-out <- pgSTLM(Y = Y,
-              X = X,
-              locs = locs,
-              params,
-              priors,
-              n_cores = n_cores,
-              n_chain = n_chain,
-              corr_fun = "matern",
-              shared_covariance_params = FALSE,
-              inits = inits,
-              verbose=TRUE)
-saveRDS(out, paste0('output/', 'polya-gamma-posts_', version, '.RDS'))
+out <- pg_stlm(Y = Y,
+               X = X,
+               locs = locs,
+               params,
+               priors,
+               n_cores = n_cores,
+               n_chain = n_chain,
+               corr_fun = "matern",
+               shared_covariance_params = FALSE,
+               inits = inits,
+               verbose=TRUE)
+saveRDS(out, paste0('output/', 'polya-gamma-posts_paleo', version, '.RDS'))
 
 dat <- list(y = y,
             X = X, 
             locs = locs_scaled,
             rescale = rescale,
             taxa.keep = taxa.keep)
-saveRDS(dat, paste0('output/', 'polya-gamma-dat_', version,'.RDS'))
+saveRDS(dat, paste0('output/', 'polya-gamma-dat_paleo', version,'.RDS'))
