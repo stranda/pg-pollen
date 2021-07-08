@@ -109,11 +109,11 @@ out <- pg_stlm(Y = Y,
                shared_covariance_params = FALSE,
                inits = inits,
                verbose=TRUE)
-saveRDS(out, paste0('output/', 'polya-gamma-posts_paleo', version, '.RDS'))
+saveRDS(out, paste0('output/', 'polya-gamma-posts_', version, '.RDS'))
 
 dat <- list(y = y,
             X = X, 
             locs = locs_scaled,
             rescale = rescale,
             taxa.keep = taxa.keep)
-saveRDS(dat, paste0('output/', 'polya-gamma-dat_paleo', version,'.RDS'))
+saveRDS(dat, paste0('output/', 'polya-gamma-dat_', version,'.RDS'))
