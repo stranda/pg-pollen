@@ -7,11 +7,6 @@ require(ggplot2)
 # setwd('C:/Users/abrow/Documents/pg-pollen')
 version <- '3.1'
 
-# READ IN DATA
-dat <- readRDS(paste0('data/', 'paleo_pollen_locs_', version, '.RDS'))
-locs_pollen <- dat$locs
-
-# Get spatial domain and projection you want to use
 # (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
 proj <- proj4string(stack)
