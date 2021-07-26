@@ -5,8 +5,12 @@ library(rgdal)
 
 version <- '3.1'
 
-out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))
+out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_MRA.RDS')))
 dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
+
+
+# plot the MRA grid
+# BayesMRA::plot_MRA_grid(out$MRA)
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -33,20 +37,18 @@ locs_pred = locs_grid/rescale
 #### MAKE PREDICTIONS ####
 # class(out) <- "pg_stlm"
 
-if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '.RDS')))) {
-  preds = predict_pg_stlm(
+if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '_MRA.RDS')))) {
+  preds = predict_pg_stlm_mra(
     out,
     X,
     X_pred,
     locs = locs,
-    locs_pred = locs_pred,
-    corr_fun = "matern",
-    shared_covariance_params = FALSE,
+    locs_pred = as.matrix(locs_pred),
     progress = TRUE, 
     verbose = TRUE
   )
-  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '.RDS')),
+  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_MRA.RDS')),
           compress = FALSE)
-  pushoverr::pushover(message = "Finished predicting Matern model")
+  pushoverr::pushover(message = "Finished predicting MRA model")
 }
 

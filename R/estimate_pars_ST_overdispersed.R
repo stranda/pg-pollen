@@ -100,9 +100,9 @@ for (n in 1:dim(Y)[1]){
 }
 
 # code to run matern model
-if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))) {
+if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')))) {
   
-  out <- pg_stlm(Y = Y,
+  out <- pg_stlm_overdispersed(Y = Y,
                  X = X,
                  locs = locs,
                  params,
@@ -112,10 +112,10 @@ if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '.R
                  corr_fun = "matern",
                  shared_covariance_params = FALSE,
                  inits = inits)
-  saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '.RDS')),
+  saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')),
           compress = FALSE)
   
-  pushoverr::pushover(message = "Finished fitting Matern model")
+  pushoverr::pushover(message = "Finished fitting overdispersed Matern model")
 }
 
 dat <- list(y = y,

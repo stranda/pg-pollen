@@ -5,7 +5,7 @@ library(rgdal)
 
 version <- '3.1'
 
-out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))
+out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')))
 dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
 
 # note that locations were scaled to fit the model
@@ -33,8 +33,8 @@ locs_pred = locs_grid/rescale
 #### MAKE PREDICTIONS ####
 # class(out) <- "pg_stlm"
 
-if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '.RDS')))) {
-  preds = predict_pg_stlm(
+if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '_overdispersed.RDS')))) {
+  preds = predict_pg_stlm_overdispersed(
     out,
     X,
     X_pred,
@@ -45,8 +45,8 @@ if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version
     progress = TRUE, 
     verbose = TRUE
   )
-  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '.RDS')),
+  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_overdispersed.RDS')),
           compress = FALSE)
-  pushoverr::pushover(message = "Finished predicting Matern model")
+  pushoverr::pushover(message = "Finished predicting overdispersed Matern model")
 }
 

@@ -17,6 +17,7 @@ library(fields)
 library(geoR)
 library(dplyr)
 library(data.table)
+library(BayesMRA)
 # install.packages("/home/adawson/Documents/projects/pgR", repos=NULL, type="source")
 library(pgR)
 
@@ -35,50 +36,14 @@ N_locs_dat = nrow(locs_scaled)
 X <- matrix(rep(1, N_locs_dat),N_locs_dat, 1)
 
 params <- default_params()
-params$n_adapt <- 2000
-params$n_mcmc <- 5000
+params$n_adapt <- 200#0
+params$n_mcmc <- 500#0
 params$n_message <- 100
 params$n_thin <- 5
 priors <- default_priors_pg_stlm(y, X, corr_fun = "matern")
-# > priors
-# $mu_beta
-# [1] 0
-# $Sigma_beta
-# [,1]
-# [1,]    1
-# $alpha_tau
-# [1] 0.1
-# $beta_tau
-# [1] 0.1
-# $mean_nu
-# [1] -1
-# $sd_nu
-# [1] 1
-# $mean_range
-# [1] 0
-# $sd_range
-# [1] 10
-
-# mu_sigma_prop    = 1
-priors$mean_nu     = -0.7  # change from -0.9 to -0.7 on 6/29/21
-priors$sd_nu       = sqrt(0.005)
-priors$mean_range  = 7  # change from 4.6 to 7 on 6/29/21
-priors$sd_range    = sqrt(0.2)
-priors$alpha_tau   = 2  # changed from default to 2
-priors$beta_tau    = 1  # changed from default to 1
-priors$mu_beta     = -5  # changed from default to -5 on 6/29/21
-priors$Sigma_beta  = 0.5  # changed from default to 0.5 on 6/29/21
 
 J <- ncol(y)
-theta_mean <- c(priors$mean_range, priors$mean_nu)
-theta_var  <- diag(c(priors$sd_range, priors$sd_nu)^2)
 
-inits <- list(
-  beta  = t(mvnfast::rmvn(J-1, priors$mu_beta, priors$Sigma_beta)),
-  tau2  = rgamma(J-1, priors$alpha_tau, priors$beta_tau),
-  theta = mvnfast::rmvn(J-1, theta_mean, theta_var),
-  rho = 0.8  # changed from runif(1, 0, 1) to 0.8 on 6/29
-)
 
 # XXX: need this to work around undefined variable in pgSPLM
 d <- ncol(y)
@@ -99,23 +64,31 @@ for (n in 1:dim(Y)[1]){
   }
 }
 
+
+# check the MRA grid
+MRA <- mra_wendland_2d(locs, M = 3, n_coarse_grid = 25)
+# number of basis functions
+sum(MRA$n_dims)
+
+# plot the MRA grid
+# plot_MRA_grid(MRA)
+
 # code to run matern model
-if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))) {
+if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '_MRA.RDS')))) {
   
-  out <- pg_stlm(Y = Y,
-                 X = X,
-                 locs = locs,
-                 params,
-                 priors,
-                 n_cores = n_cores,
-                 n_chain = n_chain,
-                 corr_fun = "matern",
-                 shared_covariance_params = FALSE,
-                 inits = inits)
-  saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '.RDS')),
+  out <- pg_stlm_mra(Y = Y,
+                     X = X,
+                     locs = locs,
+                     params,
+                     priors,
+                     n_cores = n_cores,
+                     n_chain = n_chain,
+                     M = 3,
+                     n_coarse_grid = 25)
+  saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '_MRA.RDS')),
           compress = FALSE)
   
-  pushoverr::pushover(message = "Finished fitting Matern model")
+  pushoverr::pushover(message = "Finished fitting MRA model")
 }
 
 dat <- list(y = y,
@@ -123,8 +96,8 @@ dat <- list(y = y,
             locs = locs_scaled,
             rescale = rescale,
             taxa.keep = taxa.keep)
-if (!file.exists( here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))) {
+
+if (!file.exists(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))) {
   saveRDS(dat, here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
 }
-
 
