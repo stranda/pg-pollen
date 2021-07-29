@@ -1,8 +1,13 @@
 library(here)
 library(rstudioapi)
 
+# pull pollen
+
+# create prediction grid
+
+
 # Model speed comparison
-jobRunScript(here::here("R", "speed-testing.R"))
+# jobRunScript(here::here("R", "speed-testing.R"))
 
 # Build prediction grid
 # this file needs to be resolved
