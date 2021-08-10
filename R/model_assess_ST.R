@@ -31,8 +31,8 @@ lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj_out)
 
 #### READ IN MODEL DATA AND OUTPUT ####
-out = readRDS(paste0('output/polya-gamma-posts_modern', version,'.RDS'))
-dat = readRDS( paste0('output/polya-gamma-dat_modern', version,'.RDS'))
+out = readRDS(here::here("output", paste0('polya-gamma-posts_modern', version,'.RDS')))
+dat = readRDS(here::here("output", paste0('polya-gamma-dat_modern', version,'.RDS')))
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
