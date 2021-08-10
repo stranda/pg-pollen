@@ -113,13 +113,17 @@ colnames(tau_melt) = c('iter', 'taxon', 'value')
 
 taxa <- data.frame(taxa.id = 1:13, taxa = taxa)
 tau_melt <- merge(tau_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
+
 ggplot() + 
-  geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)), size = 0.5) + 
+  geom_line(data=tau_melt, aes(x=iter, y=value, color=factor(taxa)), size = 1) + 
   scale_color_brewer(palette = "Paired") +
+  ggtitle('Tau (v3.1)') +
   theme_bw() +
   theme(legend.text = element_text(size = 14),
+        legend.title = element_blank(),
         axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12)) +
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, size = 16)) +
   guides(color = guide_legend(override.aes = list(size = 4)))
 ggsave(paste0("figures/trace_tau_", version, ".png"), device="png", type="cairo")
 
@@ -129,12 +133,15 @@ colnames(theta_melt) = c('iter', 'taxon', 'number', 'value')
 theta_melt <- merge(theta_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=theta_melt) + 
-  geom_line(aes(x=iter, y=exp(value), color=factor(taxa)), size = 0.5) +
+  geom_line(aes(x=iter, y=exp(value), color=factor(taxa)), size = 1) +
   scale_color_brewer(palette = "Paired") +
+  ggtitle('Thetas 1, 2 (v3.1)') +
   theme_bw() +
   theme(legend.text = element_text(size = 14),
+        legend.title = element_blank(),
         axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12)) +
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, size = 16)) +
   facet_grid(number~., scales="free_y") +
   guides(color = guide_legend(override.aes = list(size = 4)))
 ggsave(paste0("figures/trace_theta_", version, ".png"), device="png", type="cairo")
@@ -145,14 +152,33 @@ colnames(mu_melt) = c('iter', 'taxon', 'value')
 mu_melt <- merge(mu_melt, taxa, by.x = 'taxon', by.y = 'taxa.id')
 
 ggplot(data=mu_melt) + 
-  geom_line(aes(x=iter, y=value, color=taxa)) +
+  geom_line(aes(x=iter, y=value, color=taxon.y)) +
   scale_color_brewer(palette = "Paired") +
+  ggtitle('Beta/mu (v3.1)') +
   theme_bw() +
   theme(legend.text = element_text(size = 14),
+        legend.title = element_blank(),
         axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12)) +
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, size = 16)) +
   guides(color = guide_legend(override.aes = list(size = 4)))
 ggsave(paste0("figures/trace_mu_", version, ".png"), device="png", type="cairo")
+
+# rho
+rho <- readRDS('output/rho3.1.RDS')
+rho <- melt(rho)
+rho$iter <- 1:nrow(rho)
+
+ggplot(data = rho) + 
+  geom_line(aes(x = iter, y = value)) +
+  ggtitle('Rho (v3.1)') +
+  theme_bw() +
+  theme(legend.text = element_text(size = 14),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, size = 16))
+ggsave(paste0("figures/trace_rho_", version, ".png"), device="png", type="cairo")
 
 ###############################################################################################################################
 ## maps

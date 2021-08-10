@@ -98,6 +98,7 @@ for (n in 1:dim(Y)[1]){
 }
 
 # code to run matern model
+config <- list(sample_tau2 = FALSE)
 out <- pg_stlm(Y = Y,
                X = X,
                locs = locs,
@@ -108,8 +109,9 @@ out <- pg_stlm(Y = Y,
                corr_fun = "matern",
                shared_covariance_params = FALSE,
                inits = inits,
-               verbose=TRUE)
-saveRDS(out, paste0('output/', 'polya-gamma-posts_', version, '.RDS'))
+               config = config,
+               verbose = TRUE)
+saveRDS(out, paste0('output/', 'polya-gamma-posts_fixed_tau_', version, '.RDS'))
 
 dat <- list(y = y,
             X = X, 
