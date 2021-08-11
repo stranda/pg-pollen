@@ -153,13 +153,6 @@ taxa.keep <- as.character(taxa.keep$taxon)
 # time 2: 705 - 1695 ybp [1200 ybp] ... etc.
 # every 990 years for 22 time chunks (until (20505, 21495), representing 21000 ybp)
 tree.cores$age <- tree.cores$age + 30
-
-# setwd('C:/Users/abrow/Documents/green_ash')
-# bins <- read.csv('BV_table_Pollen_nnet_0.1.csv', stringsAsFactors = FALSE)
-# bins <- bins %>% tidyr::separate(time, c("timeTo", "timeFrom"))
-# bins$timeTo <- as.numeric(bins$timeTo)
-# bins$timeFrom <- as.numeric(bins$timeFrom)
-
 paleo <- tree.cores[tree.cores$age >= -70, ]
 paleo_bins <- c(-70, seq(705, by = 990, length.out = 22))
 paleo_cut <- cut(paleo$age, include.lowest = TRUE, breaks = paleo_bins)
@@ -179,7 +172,6 @@ paleo_time <- split(paleo, f = paleo$cut)
 # SUM POLLEN COUNTS BY TIME PERIOD/SITE
 # MERGE WITH SITE IDENTIFIER; EACH TIME PERIOD SHOULD HAVE SAME # ROWS (SITES)
 # CONVERT VALUES TO INTEGERS
-
 n_times <- length(paleo_time)
 for(i in 1:n_times){
   compiled.meta = paleo_time[[i]][,c('x', 'y')]
@@ -200,7 +192,6 @@ for(i in 1:n_times){
 
 
 # CONSTRUCT DATA LIST, INCLUDING LOCATIONS, INTEGER ARRAY, AND TAXA.KEEP
-
 paleo_locs <- paleo_time[[1]][,c('x','y','id')]
 n_locs <- nrow(paleo_locs)
 n_times <- length(paleo_time)
@@ -217,11 +208,16 @@ paleo_locs <- paleo_locs[,c('x','y')]
 
 saveRDS(paleo_dat_array, paste0('data/', 'pollen_dat_', version, '.RDS'))
 saveRDS(paleo_locs, paste0('data/', 'pollen_locs_', version, '.RDS'))
+saveRDS(taxa.keep, paste0('data/', 'taxa_', version, '.RDS'))
+
+# FOR CHECKING TO SEE IF MODERN TIME BIN AFFECTS THE REST OF THE ESTIMATES, 
+# CREATE DATA ARRAY WITHOUT MODERN TIME BIN
+paleo_dat_array_sub <- paleo_dat_array[, , -1]
+saveRDS(paleo_dat_array_sub, paste0('data/', 'pollen_dat_no_modern_', version, '.RDS'))
 
 
 
 #ANDRIA'S EXTRA CODE - TRYING TO FIND SITE UNDER GLACIER
-
 dat_array = readRDS('data/pollen_dat_1.0.RDS')
 locs = readRDS('data/pollen_locs_1.0.RDS')
 taxa.keep = readRDS('data/pollen_taxa_1.0.RDS')
