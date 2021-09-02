@@ -925,6 +925,204 @@ plot_pollen <- ggplot(pollen, aes(x = median_time, y = BVcent)) +
 
 
 
+#### CALCULATE BVS FOR NEWEST MODEL RUN (AUGUST 23, 2021) ####
+
+# READ IN FRAXINUS DATA
+# prediction grid, frax predictions for 50 random iterations
+locs_grid <- readRDS('data/grid_3.1.RDS')
+preds <- readRDS('output/frax_preds_n50_3.2_latent_overdispersed.RDS')
+preds_no_mod <- readRDS('output/frax_preds_n50_3.2_latent_overdispersed_no_modern.RDS')
+
+time <- c(-70, seq(705, by = 990, length.out = 22))
+time <- data.frame(timeFrom = time[-1], timeTo = time[-23])
+time$time_mid <- (time$timeFrom + time$timeTo) / 2  # to get midpoint of time bins
+
+
+# read raster masks (provides masks for spatial domain/resolution of genetic + ENM data)
+stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
+proj <- proj4string(stack)
+
+# need to find times in glacier masks closest to median pollen times
+stack_times <- rev(seq(0, by = 30, length.out = 701))
+time$closest <- NA
+for(i in 1:nrow(time)){
+  time$closest[i] <- which.min(abs(stack_times - time$time_mid[i]))
+}
+stack_list <- unstack(stack)
+stack_sub <- stack_list[time$closest]
+
+for(i in 1:length(stack_sub)){
+  stack_sub[[i]][stack_sub[[i]] == 1] <- NA  # convert areas completely covered by ice to NAs
+}
+
+stack_sub_no_mod <- stack_sub[-1]
+
+
+#### DATA PREPARATION ####
+# convert prediction array to list of rasterstacks
+n_iter <- dim(preds)[1]
+n_times <- dim(preds)[3]
+n_times_no_mod <- dim(preds_no_mod)[3]
+
+preds_list <- list() 
+for(i in 1:n_iter){
+  preds_list[[i]] <- cbind(locs_grid, data.frame(preds[i,,]))
+  preds_list[[i]] <- pivot_longer(preds_list[[i]], cols = 3:ncol(preds_list[[i]]),
+                                  names_to = 'time', values_to = 'pred')
+  preds_list[[i]]$time <- as.integer(substr(preds_list[[i]]$time, start = 2,
+                                            stop = nchar(preds_list[[i]]$time)))
+  preds_list[[i]] <- split(preds_list[[i]], f = preds_list[[i]]$time)
+  preds_list[[i]] <- lapply(preds_list[[i]], function(x) { x['time'] <- NULL; x })
+}
+
+preds_no_mod_list <- list()
+for(i in 1:n_iter){
+  preds_no_mod_list[[i]] <- cbind(locs_grid, data.frame(preds_no_mod[i,,]))
+  preds_no_mod_list[[i]] <- pivot_longer(preds_no_mod_list[[i]], cols = 3:ncol(preds_no_mod_list[[i]]),
+                                       names_to = 'time', values_to = 'pred')
+  preds_no_mod_list[[i]]$time <- as.integer(substr(preds_no_mod_list[[i]]$time, start = 2,
+                                                 stop = nchar(preds_no_mod_list[[i]]$time)))
+  preds_no_mod_list[[i]] <- split(preds_no_mod_list[[i]], f = preds_no_mod_list[[i]]$time)
+  preds_no_mod_list[[i]] <- lapply(preds_no_mod_list[[i]], function(x) { x['time'] <- NULL; x })
+}
+
+
+# takes 1-2 minutes to run
+rasterstack_list <- preds_list
+for(i in 1:n_iter){
+  for(j in 1:n_times){
+    rasterstack_list[[i]][[j]] <- rasterFromXYZ(rasterstack_list[[i]][[j]])
+    proj4string(rasterstack_list[[i]][[j]]) <- proj
+    rasterstack_list[[i]][[j]] <- raster::resample(rasterstack_list[[i]][[j]], y = stack_sub[[j]])
+    rasterstack_list[[i]][[j]] <- mask(rasterstack_list[[i]][[j]], mask = stack_sub[[j]])
+  }
+}
+
+rasterstack_no_mod_list <- preds_no_mod_list
+for(i in 1:n_iter){
+  for(j in 1:n_times_no_mod){
+    rasterstack_no_mod_list[[i]][[j]] <- rasterFromXYZ(rasterstack_no_mod_list[[i]][[j]])
+    proj4string(rasterstack_no_mod_list[[i]][[j]]) <- proj
+    rasterstack_no_mod_list[[i]][[j]] <- raster::resample(rasterstack_no_mod_list[[i]][[j]], y = stack_sub_no_mod[[j]])
+    rasterstack_no_mod_list[[i]][[j]] <- mask(rasterstack_no_mod_list[[i]][[j]], mask = stack_sub_no_mod[[j]])
+  }
+}
+
+# weight relative abundance by proportion of cell covered by land (for cells with partial glacial coverage)
+stack_sub_revalue <- stack_sub
+for(i in 1:n_times){
+  values(stack_sub_revalue[[i]]) <- 1 - values(stack_sub_revalue[[i]])
+}
+
+stack_sub_revalue_no_mod <- stack_sub_revalue[-1]
+
+rasterstack_revalue <- rasterstack_list
+for(i in 1:n_iter){
+  for(j in 1:n_times){
+    rasterstack_revalue[[i]][[j]] <- overlay(rasterstack_list[[i]][[j]], stack_sub_revalue[[j]],
+                                             fun = function(x, y){(x * y)})
+  }
+}
+
+rasterstack_revalue_no_mod <- rasterstack_no_mod_list
+for(i in 1:n_iter){
+  for(j in 1:n_times_no_mod){
+    rasterstack_revalue_no_mod[[i]][[j]] <- overlay(rasterstack_no_mod_list[[i]][[j]], stack_sub_revalue_no_mod[[j]],
+                                             fun = function(x, y){(x * y)})
+  }
+}
+
+
+# convert list of rasters into raster stack
+for(i in 1:n_iter){
+  rasterstack_revalue[[i]] <- raster::stack(rasterstack_revalue[[i]])
+}
+
+for(i in 1:n_iter){
+  rasterstack_revalue_no_mod[[i]] <- raster::stack(rasterstack_revalue_no_mod[[i]])
+}
+
+
+##############################################
+## CALCULATE AND PLOT BIOTIC VELOCITIES
+##############################################
+# iterate bioticVelocity function through each iteration (takes ~6 minutes)
+# first need to reverse the order of rasters in each rasterstack to get the BV function to work
+rasterstack_rev <- list()
+for(i in 1:n_iter){
+  rasterstack_rev[[i]] <- subset(rasterstack_revalue[[i]], order(n_times:1))
+}
+saveRDS(rasterstack_rev, 'output/rasterstacks_for_bv_calc_n50_latent_overdispersed_v3.2.RDS')
+rasterstack_rev <- readRDS('output/rasterstacks_for_bv_calc_n50_latent_overdispersed_v3.2.RDS')
+
+rasterstack_no_mod_rev <- list()
+for(i in 1:n_iter){
+  rasterstack_no_mod_rev[[i]] <- subset(rasterstack_revalue_no_mod[[i]], order(n_times_no_mod:1))
+}
+saveRDS(rasterstack_no_mod_rev, 'output/rasterstacks_for_bv_calc_n50_latent_overdispersed_no_mod_v3.2.RDS')
+rasterstack_no_mod_rev <- readRDS('output/rasterstacks_for_bv_calc_n50_latent_overdispersed_no_mod_v3.2.RDS')
+
+
+# might need to force negative values to be 0, otherwise BV function won't work
+for(i in 1:n_iter){
+  rasterstack_rev[[i]] <- calc(rasterstack_rev[[i]], fun = function(x) ifelse(x < 0, 0, x))
+}
+
+for(i in 1:n_iter){
+  rasterstack_no_mod_rev[[i]] <- calc(rasterstack_no_mod_rev[[i]], fun = function(x) ifelse(x < 0, 0, x))
+}
+
+# calculate BVs
+bv_list <- list()
+for(i in 1:n_iter){
+  bv_list[[i]] <- bioticVelocity(rasterstack_rev[[i]],
+                                 times = rev(time$time_mid) * -1,
+                                 onlyInSharedCells = TRUE)
+}
+
+bv_no_mod_list <- list()
+for(i in 1:n_iter){
+  bv_no_mod_list[[i]] <- bioticVelocity(rasterstack_no_mod_rev[[i]],
+                                      times = rev(time$time_mid[-1]) * -1,
+                                      onlyInSharedCells = TRUE)
+}
+
+
+# convert list of dataframes to single dataframe
+for(i in 1:n_iter){
+  bv_list[[i]]$type <- 'modern'
+}
+bvs <- bind_rows(bv_list)
+saveRDS(bvs, 'output/bvs_n50_latent_overdispersed_v3.2.RDS')
+
+for(i in 1:n_iter){
+  bv_no_mod_list[[i]]$type <- 'no modern'
+}
+bvs_no_mod <- bind_rows(bv_no_mod_list)
+saveRDS(bvs_no_mod, 'output/bvs_n50_latent_overdispersed_no_modern_v3.2.RDS')
+
+
+# combine BVs from all model types
+bvs_all <- rbind(bvs, bvs_no_mod)
+
+#### PLOT BVS WITH UNCERTAINTY ####
+ggplot(bvs_all, aes(x = factor(timeFrom), y = centroidVelocity, color = type)) +
+  geom_boxplot() + 
+  xlab('\nYears before present') +
+  ylab('Centroid velocity (m/yr)\n') +
+  labs(color = '') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+ggsave('figures/BVs_modern_vs_no_modern_v3.2.png', 
+       width = 9, height = 4, unit = 'in')
+
+
+
+
+
 # OLD CODE
 
 # CALCULATE BV USING FRAX PREDS
@@ -1211,3 +1409,48 @@ table(summ_max$timeFrom)
 # 17,535: 3
 # 16,545: 5
 # 1695: 12
+
+
+
+
+#### PLOTTING N/S VELOCITIES AS SCATTERPLOTS
+# can see overall trend (e.g., whether things are expanding northward overall)
+bv <- readRDS('output/bvs_n100_all_taxa_latent_v3.1.RDS')
+
+# plot overall N/S movement of all taxa; take mean of BVs across time for each taxon
+bv_summ <- bv %>% 
+  dplyr::select(taxa, nCentroidVelocity, sCentroidVelocity) %>% 
+  group_by(taxa) %>% 
+  summarize(across(c(nCentroidVelocity, sCentroidVelocity), mean))
+
+ggplot(bv_summ, aes(x = sCentroidVelocity, y = nCentroidVelocity, color = taxa)) +
+  geom_point() + 
+  scale_x_continuous(limits = c(0, 310)) +
+  scale_y_continuous(limits = c(0, 310)) +
+  geom_abline(slope = 1, intercept = 0, lty = 'dashed') +
+  theme_classic()
+
+# plot Fraxinus movement for different time periods
+frax_summ <- bv %>% 
+  filter(taxa == 'Fraxinus') %>% 
+  dplyr::select(timeFrom, nCentroidVelocity, sCentroidVelocity) %>% 
+  group_by(timeFrom) %>% 
+  summarize(across(c(nCentroidVelocity, sCentroidVelocity), mean))
+frax_summ$timeFrom <- frax_summ$timeFrom * -1
+
+ggplot(frax_summ, aes(x = sCentroidVelocity, y = nCentroidVelocity, color = timeFrom)) +
+  geom_point(size = 4) + 
+  scale_x_continuous(limits = c(0, 455)) +
+  scale_y_continuous(limits = c(0, 455)) +
+  geom_abline(slope = 1, intercept = 0, lty = 'dashed') +
+  labs(color = 'Years before\npresent\n') +
+  xlab('\nSouth centroid velocity (m/yr)') +
+  ylab('North centroid velocity (m/yr)\n') +
+  theme_classic() + 
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12))
+
+## COULD MAKE ABOVE PLOTS BETTER BY ADDING ERROR BARS
+## COULD ADD BV SUMMARIES FROM OTHER 4 METHODS ONTO ONE PLOT TO COMPARE
