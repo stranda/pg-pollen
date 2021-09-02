@@ -32,3 +32,9 @@ The R code in this repo runs a spatiotemporal multinomial model to estimate tree
 * Resample and mask prediction output to match spatial extent and resolution of interest
 * Run and plot output of biotic velocity function
 
+### 8. prep_pollen_for_ABC.R
+* Read output from predict_ST.R
+* Interpolate pollen predictions to 30-year time resolution
+* Mask out ice and water from pollen prediction rasters
+* Weight relative abundance predictions by proportion of cell covered by land (for cells with partial glacial coverage)
+* Convert to rasterstacks
