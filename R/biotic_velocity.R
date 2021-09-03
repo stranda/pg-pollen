@@ -259,6 +259,7 @@ breaks_vec <- c('0.025 - 0.05', '0.05 - 0.075', '0.075 - 0.1', '0.1 - 0.15', '0.
                 '0.2 - 0.3', '0.3 - 0.45')
 my_colors <- RColorBrewer::brewer.pal(9, 'YlOrRd')[3:9]
 
+# plot across multiple PDF pages
 plot_list <- list()
 for(i in 1:5){
   plot_list[[i]] <- ggplot(refuge_df) + 
@@ -283,323 +284,6 @@ ggsave('figures/frax_refugia_latent_n50.pdf', plots,
 
 
 
-##########################################################
-# PLOT CENTROID BV FOR ALL 5 METHODS
-##########################################################
-# require(gridExtra)
-# read bv data
-# setwd('C:/Users/abrow/Documents/green_ash')
-abc_enm <- read.csv('BV table ENM nnet_0.1.csv', stringsAsFactors = FALSE)
-abc <- read.csv('BV table NAIVE nnet_0.1.csv', stringsAsFactors = FALSE)
-abc_pollen <- read.csv('BV_table_POLLEN_nnet_0.1.csv', stringsAsFactors = FALSE)
-load('enm_biotic_velocities.rda')
-enm <- velocities
-pollen <- readRDS('pollen_no_interp_bvs_n50.RDS')
-
-# pollen
-# for now, use 21 times most closely associated with 990-yr intervals
-levels_use <- seq(5, 46, by = 2)
-times_use <- levels(pollen$median_time)[levels_use]
-pollen_sub <- pollen %>% filter(median_time %in% times_use)
-pollen_sub$median_time <- droplevels(pollen_sub$median_time)
-
-# summarize across 50 iterations to get 97.5 and 2.5 quantiles
-pollen_summ <- pollen_sub %>%
-  group_by(median_time) %>%
-  summarize(BVcent = quantile(centroidVelocity, 0.5),
-            BVcent0p025 = quantile(centroidVelocity, 0.025),
-            BVcent0p975 = quantile(centroidVelocity, 0.975),
-            BVN = quantile(nCentroidVelocity, 0.5),
-            BVN0p025 = quantile(nCentroidVelocity, 0.025),
-            BVN0p975 = quantile(nCentroidVelocity, 0.975),
-            BVS = quantile(sCentroidVelocity, 0.5),
-            BVS0p025 = quantile(sCentroidVelocity, 0.025),
-            BVS0p975 = quantile(sCentroidVelocity, 0.975)
-            )
-saveRDS(pollen_summ,'pollen_bvs_quants_for_plotting.RDS')
-
-pollen <- readRDS('pollen_bvs_quants_for_plotting.RDS')
-pollen <- pollen %>% arrange(desc(median_time))  # arrange so time goes from LGM to modern (top to bottom)
-
-plot_pollen <- ggplot(pollen, aes(x = median_time, y = BVcent)) +
-  geom_boxplot(middle = pollen$BVcent,
-               lower = pollen$BVcent0p025,
-               upper = pollen$BVcent0p975) + 
-  scale_y_continuous(limits = c(0,1500)) +
-  ylab('\n ') +
-  geom_text(x = 3, y = 1450, label = 'Pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 10),
-        axis.text.y = element_text(size = 12))
-
-# enm
-enm_sub <- enm %>% filter(timeSpan == 990, onlyInSharedCells == TRUE, onlyInContinuouslyExposedLand == FALSE)
-enm_sub$median_time <- as.factor(enm_sub$median_time)
-
-# summarize across 24 models to get 97.5 and 2.5 quantiles
-enm_summ <- enm_sub %>% 
-  group_by(median_time) %>% 
-  summarize(BVcent = quantile(centroidVelocity, 0.5),
-            BVcent0p025 = quantile(centroidVelocity, 0.025),
-            BVcent0p975 = quantile(centroidVelocity, 0.975), 
-            BVN = quantile(nCentroidVelocity, 0.5),
-            BVN0p025 = quantile(nCentroidVelocity, 0.025),
-            BVN0p975 = quantile(nCentroidVelocity, 0.975),
-            BVS = quantile(sCentroidVelocity, 0.5),
-            BVS0p025 = quantile(sCentroidVelocity, 0.025),
-            BVS0p975 = quantile(sCentroidVelocity, 0.975)
-            )
-saveRDS(enm_summ,'enm_bvs_quants_for_plotting.RDS')
-
-enm <- readRDS('enm_bvs_quants_for_plotting.RDS')
-enm <- enm %>% arrange(desc(median_time))
-
-plot_enm <- ggplot(enm, aes(x = median_time, y = BVcent)) + 
-  geom_boxplot(middle = enm$BVcent,
-               lower = enm$BVcent0p025,
-               upper = enm$BVcent0p975) + 
-  scale_y_continuous(limits = c(0, 400)) +
-  ylab('\n ') +
-  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-# abc naive
-abc$median_timeF <- as.factor(abc$median_time)
-
-plot_abc <- ggplot(abc, aes(x = time, y = BVcent))+ 
-  geom_boxplot(middle = abc$BVcent, 
-               lower = abc$BVcent0p025,
-               upper = abc$BVcent0p975)+
-  scale_y_continuous(limits = c(0, 400)) +
-  ylab('Centroid BV (m/yr)\n') +
-  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-# abc-enm
-abc_enm$median_time <- as.factor(abc_enm$median_time)
-
-plot_abc_enm <- ggplot(abc_enm, aes(x = time, y = BVcent))+ 
-  geom_boxplot(middle = abc_enm$BVcent, 
-               lower = abc_enm$BVcent0p025,
-               upper = abc_enm$BVcent0p975)+
-  scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
-                              "17040-16050","16050-15060","15060-14070","14070-13080",
-                              "13080-12090","12090-11100","11100-10110","10110-9120",
-                              "9120-8130","8130-7140","7140-6150","6150-5160",
-                              "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
-  scale_y_continuous(limits = c(0, 400)) +
-  ylab('\n ') +
-  xlab('Years before present') +
-  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_text(size = 14),
-        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-# abc-pollen
-abc_pollen$median_time <- as.factor(abc_pollen$median_time)
-
-plot_abc_pollen <- ggplot(abc_pollen, aes(x = time, y = BVcent))+ 
-  geom_boxplot(middle = abc_pollen$BVcent, 
-               lower = abc_pollen$BVcent0p025,
-               upper = abc_pollen$BVcent0p975)+
-  scale_y_continuous(limits = c(0, 400)) +
-  ylab('\n ') +
-  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-# grid.arrange(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, ncol = 1)
-g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
-                 ncol = 1, heights = c(1,1,1,1,1.6))
-ggsave(file = 'figures/BVs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
-
-
-
-
-# PLOT NORTH CENTROID BVS FOR ALL 5 METHODS
-plot_pollen <- ggplot(pollen, aes(x = median_time, y = BVN)) +
-  geom_boxplot(middle = pollen$BVN,
-               lower = pollen$BVN0p025,
-               upper = pollen$BVN0p975) + 
-  scale_y_continuous(limits = c(-200,1700)) +
-  ylab('\n\n ') +
-  geom_text(x = 3, y = 1600, label = 'Pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 13),
-        axis.text.y = element_text(size = 12))
-
-plot_enm <- ggplot(enm, aes(x = median_time, y = BVN)) + 
-  geom_boxplot(middle = enm$BVN,
-               lower = enm$BVN0p025,
-               upper = enm$BVN0p975) + 
-  scale_y_continuous(limits = c(-200, 400)) +
-  ylab('\n\n ') +
-  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc <- ggplot(abc, aes(x = time, y = BVN))+ 
-  geom_boxplot(middle = abc$BVN, 
-               lower = abc$BVN0p025,
-               upper = abc$BVN0p975)+
-  scale_y_continuous(limits = c(-200, 400)) +
-  ylab('North-centroid\nBV (m/yr)\n') +
-  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc_pollen <- ggplot(abc_pollen, aes(x = time, y = BVN))+ 
-  geom_boxplot(middle = abc_pollen$BVN, 
-               lower = abc_pollen$BVN0p025,
-               upper = abc_pollen$BVN0p975)+
-  scale_y_continuous(limits = c(-200, 400)) +
-  ylab('\n\n ') +
-  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc_enm <- ggplot(abc_enm, aes(x = time, y = BVcent))+ 
-  geom_boxplot(middle = abc_enm$BVcent, 
-               lower = abc_enm$BVcent0p025,
-               upper = abc_enm$BVcent0p975)+
-  scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
-                              "17040-16050","16050-15060","15060-14070","14070-13080",
-                              "13080-12090","12090-11100","11100-10110","10110-9120",
-                              "9120-8130","8130-7140","7140-6150","6150-5160",
-                              "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
-  scale_y_continuous(limits = c(-200, 400)) +
-  ylab('\n\n ') +
-  xlab('Years before present') +
-  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_text(size = 14),
-        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
-                 ncol = 1, heights = c(1,1,1,1,1.6))
-ggsave(file = 'figures/BVNs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
-
-
-
-
-# PLOT SOUTH CENTROID BVS FOR ALL 5 METHODS
-plot_pollen <- ggplot(pollen, aes(x = median_time, y = BVS)) +
-  geom_boxplot(middle = pollen$BVS,
-               lower = pollen$BVS0p025,
-               upper = pollen$BVS0p975) + 
-  scale_y_continuous(limits = c(-500,1000)) +
-  ylab('\n\n ') +
-  geom_text(x = 19, y = -425, label = 'Pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 13),
-        axis.text.y = element_text(size = 12))
-
-plot_enm <- ggplot(enm, aes(x = median_time, y = BVS)) + 
-  geom_boxplot(middle = enm$BVS,
-               lower = enm$BVS0p025,
-               upper = enm$BVS0p975) + 
-  scale_y_continuous(limits = c(-500, 250)) +
-  ylab('\n\n ') +
-  geom_text(x = 19, y = -450, label = 'ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc <- ggplot(abc, aes(x = time, y = BVS))+ 
-  geom_boxplot(middle = abc$BVS, 
-               lower = abc$BVS0p025,
-               upper = abc$BVS0p975)+
-  scale_y_continuous(limits = c(-500, 250)) +
-  ylab('South-centroid\nBV (m/yr)\n') +
-  geom_text(x = 19, y = -450, label = 'Naive ABC', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc_pollen <- ggplot(abc_pollen, aes(x = time, y = BVS))+ 
-  geom_boxplot(middle = abc_pollen$BVS, 
-               lower = abc_pollen$BVS0p025,
-               upper = abc_pollen$BVS0p975)+
-  scale_y_continuous(limits = c(-500, 250)) +
-  ylab('\n\n ') +
-  geom_text(x = 19, y = -450, label = 'ABC-pollen', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-plot_abc_enm <- ggplot(abc_enm, aes(x = time, y = BVcent))+ 
-  geom_boxplot(middle = abc_enm$BVcent, 
-               lower = abc_enm$BVcent0p025,
-               upper = abc_enm$BVcent0p975)+
-  scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
-                              "17040-16050","16050-15060","15060-14070","14070-13080",
-                              "13080-12090","12090-11100","11100-10110","10110-9120",
-                              "9120-8130","8130-7140","7140-6150","6150-5160",
-                              "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
-  scale_y_continuous(limits = c(-500, 250)) +
-  ylab('\n\n ') +
-  xlab('Years before present') +
-  geom_text(x = 19, y = -450, label = 'ABC-ENM', size = 6) +
-  theme_bw() +
-  theme(axis.title.x = element_text(size = 14),
-        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
-        axis.title.y = element_text(size = 14),
-        axis.text.y = element_text(size = 12))
-
-g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
-                 ncol = 1, heights = c(1,1,1,1,1.6))
-ggsave(file = 'figures/BVSs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
-
-
-
 #################################################
 # PLOT CENTROIDS OF FRAX RANGE OVER TIME ON MAP
 #################################################
@@ -615,8 +299,6 @@ bvs_summ <- bvs %>%
 ggplot(data = bvs_summ) +
   geom_point(aes(x = x, y = y, fill = timeFrom),
              size = 4, alpha = 0.9, pch = 21) +
-  # geom_text(aes(x = centroidLong, y = centroidLat, 
-  #               label = ifelse(timeTo > -7000, as.character(timeTo),''))) +
   geom_label_repel(aes(x = x, y = y, 
                        label = ifelse(timeFrom > -6000, as.character(timeFrom),'')),
                    box.padding   = 0.5,
@@ -637,3 +319,311 @@ ggplot(data = bvs_summ) +
         legend.text = element_text(size = 14),
         plot.title = element_text(size = 16)) +
   coord_equal()
+
+
+
+
+##########################################################
+# PLOT BIOTIC VELOCITIES FOR ALL 5 METHODS
+##########################################################
+# setwd('C:/Users/abrow/Documents/green_ash')
+# require(gridExtra)
+# read bv data
+abc_enm <- read.csv('bvs_enm-abc.csv', stringsAsFactors = FALSE)
+abc <- read.csv('bvs_naive_abc.csv', stringsAsFactors = FALSE)
+abc_pollen <- read.csv('bvs_pollen-abc.csv', stringsAsFactors = FALSE)
+load('enm_biotic_velocities.rda')
+enm <- velocities
+rm(velocities)
+pollen <- readRDS('bvs_n50_latent_overdispersed_v3.2.RDS')
+
+# DATA PREPARATION - POLLEN
+# summarize across 50 iterations to get 97.5 and 2.5 quantiles
+pollen_summ <- pollen %>%
+  dplyr::group_by(timeFrom) %>%
+  dplyr::summarize(BVcent = quantile(centroidVelocity, 0.5),
+            BVcent0p025 = quantile(centroidVelocity, 0.025),
+            BVcent0p975 = quantile(centroidVelocity, 0.975),
+            BVN = quantile(nCentroidVelocity, 0.5),
+            BVN0p025 = quantile(nCentroidVelocity, 0.025),
+            BVN0p975 = quantile(nCentroidVelocity, 0.975),
+            BVS = quantile(sCentroidVelocity, 0.5),
+            BVS0p025 = quantile(sCentroidVelocity, 0.025),
+            BVS0p975 = quantile(sCentroidVelocity, 0.975)
+            )
+pollen_summ$timeFrom <- pollen_summ$timeFrom * -1
+saveRDS(pollen_summ,'pollen_bvs_quants_for_plotting.RDS')
+
+plot_pollen <- ggplot(pollen_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent)) +
+  geom_boxplot(middle = pollen_summ$BVcent,
+               lower = pollen_summ$BVcent0p025,
+               upper = pollen_summ$BVcent0p975) + 
+  scale_y_continuous(limits = c(0,1500)) +
+  ylab('\n ') +
+  geom_text(x = 3, y = 1450, label = 'Pollen', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 10),
+        axis.text.y = element_text(size = 12))
+
+# DATA PREPARATION - ENM
+# enm dataframe contains BVs for each model type; filter out BVs you don't need
+enm_sub <- enm %>% filter(timeSpan == 990, 
+                          onlyInSharedCells == TRUE, 
+                          onlyInContinuouslyExposedLand == FALSE)
+
+# summarize across 24 models to get 97.5 and 2.5 quantiles
+enm_summ <- enm_sub %>% 
+  dplyr::group_by(timeFrom) %>% 
+  dplyr::summarize(BVcent = quantile(centroidVelocity, 0.5),
+            BVcent0p025 = quantile(centroidVelocity, 0.025),
+            BVcent0p975 = quantile(centroidVelocity, 0.975), 
+            BVN = quantile(nCentroidVelocity, 0.5),
+            BVN0p025 = quantile(nCentroidVelocity, 0.025),
+            BVN0p975 = quantile(nCentroidVelocity, 0.975),
+            BVS = quantile(sCentroidVelocity, 0.5),
+            BVS0p025 = quantile(sCentroidVelocity, 0.025),
+            BVS0p975 = quantile(sCentroidVelocity, 0.975)
+            )
+enm_summ$timeFrom <- enm_summ$timeFrom * -1
+saveRDS(enm_summ,'enm_bvs_quants_for_plotting.RDS')
+
+plot_enm <- ggplot(enm_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent)) + 
+  geom_boxplot(middle = enm_summ$BVcent,
+               lower = enm_summ$BVcent0p025,
+               upper = enm_summ$BVcent0p975) + 
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# DATA PREPARATION - NAIVE ABC
+abc$timeFrom <- as.numeric(gsub('-.*', '', abc$time))
+
+plot_abc <- ggplot(abc, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent))+ 
+  geom_boxplot(middle = abc$BVcent, 
+               lower = abc$BVcent0p025,
+               upper = abc$BVcent0p975)+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('Centroid BV (m/yr)\n') +
+  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# DATA PREPARATION - ENM-ABC
+abc_enm$timeFrom <- as.numeric(gsub('-.*', '', abc_enm$time))
+
+plot_abc_enm <- ggplot(abc_enm, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent))+ 
+  geom_boxplot(middle = abc_enm$BVcent, 
+               lower = abc_enm$BVcent0p025,
+               upper = abc_enm$BVcent0p975)+
+  # scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
+  #                             "17040-16050","16050-15060","15060-14070","14070-13080",
+  #                             "13080-12090","12090-11100","11100-10110","10110-9120",
+  #                             "9120-8130","8130-7140","7140-6150","6150-5160",
+  #                             "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  xlab('Years before present') +
+  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_text(size = 14),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+# DATA PREPARATION - POLLEN-ABC
+abc_pollen$timeFrom <- as.numeric(gsub('-.*', '', abc_pollen$time))
+
+plot_abc_pollen <- ggplot(abc_pollen, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent))+ 
+  geom_boxplot(middle = abc_pollen$BVcent, 
+               lower = abc_pollen$BVcent0p025,
+               upper = abc_pollen$BVcent0p975)+
+  scale_y_continuous(limits = c(0, 400)) +
+  ylab('\n ') +
+  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
+                 ncol = 1, heights = c(1,1,1,1,1))
+ggsave(file = 'figures/BVs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
+
+
+
+
+# PLOT NORTH CENTROID BVS FOR ALL 5 METHODS
+plot_pollen <- ggplot(pollen_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVN)) +
+  geom_boxplot(middle = pollen_summ$BVN,
+               lower = pollen_summ$BVN0p025,
+               upper = pollen_summ$BVN0p975) + 
+  scale_y_continuous(limits = c(-200,1700)) +
+  ylab('\n\n ') +
+  geom_text(x = 3, y = 1600, label = 'Pollen', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 13),
+        axis.text.y = element_text(size = 12))
+
+plot_enm <- ggplot(enm_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVN)) + 
+  geom_boxplot(middle = enm_summ$BVN,
+               lower = enm_summ$BVN0p025,
+               upper = enm_summ$BVN0p975) + 
+  scale_y_continuous(limits = c(-200, 400)) +
+  ylab('\n\n ') +
+  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc <- ggplot(abc, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVN))+ 
+  geom_boxplot(middle = abc$BVN, 
+               lower = abc$BVN0p025,
+               upper = abc$BVN0p975)+
+  scale_y_continuous(limits = c(-200, 400)) +
+  ylab('North-centroid\nBV (m/yr)\n') +
+  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc_pollen <- ggplot(abc_pollen, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVN))+ 
+  geom_boxplot(middle = abc_pollen$BVN, 
+               lower = abc_pollen$BVN0p025,
+               upper = abc_pollen$BVN0p975)+
+  scale_y_continuous(limits = c(-200, 400)) +
+  ylab('\n\n ') +
+  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc_enm <- ggplot(abc_enm, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent))+ 
+  geom_boxplot(middle = abc_enm$BVcent, 
+               lower = abc_enm$BVcent0p025,
+               upper = abc_enm$BVcent0p975)+
+  # scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
+  #                             "17040-16050","16050-15060","15060-14070","14070-13080",
+  #                             "13080-12090","12090-11100","11100-10110","10110-9120",
+  #                             "9120-8130","8130-7140","7140-6150","6150-5160",
+  #                             "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
+  scale_y_continuous(limits = c(-200, 400)) +
+  ylab('\n\n ') +
+  xlab('Years before present') +
+  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_text(size = 14),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
+                 ncol = 1, heights = c(1,1,1,1,1))
+ggsave(file = 'figures/BVNs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
+
+
+
+
+# PLOT SOUTH CENTROID BVS FOR ALL 5 METHODS
+plot_pollen <- ggplot(pollen_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVS)) +
+  geom_boxplot(middle = pollen_summ$BVS,
+               lower = pollen_summ$BVS0p025,
+               upper = pollen_summ$BVS0p975) + 
+  scale_y_continuous(limits = c(-500,1000)) +
+  ylab('\n\n ') +
+  geom_text(x = 19, y = -425, label = 'Pollen', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 13),
+        axis.text.y = element_text(size = 12))
+
+plot_enm <- ggplot(enm_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVS)) + 
+  geom_boxplot(middle = enm_summ$BVS,
+               lower = enm_summ$BVS0p025,
+               upper = enm_summ$BVS0p975) + 
+  scale_y_continuous(limits = c(-500, 250)) +
+  ylab('\n\n ') +
+  geom_text(x = 19, y = -450, label = 'ENM', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc <- ggplot(abc, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVS))+ 
+  geom_boxplot(middle = abc$BVS, 
+               lower = abc$BVS0p025,
+               upper = abc$BVS0p975)+
+  scale_y_continuous(limits = c(-500, 250)) +
+  ylab('South-centroid\nBV (m/yr)\n') +
+  geom_text(x = 19, y = -450, label = 'Naive ABC', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc_pollen <- ggplot(abc_pollen, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVS))+ 
+  geom_boxplot(middle = abc_pollen$BVS, 
+               lower = abc_pollen$BVS0p025,
+               upper = abc_pollen$BVS0p975)+
+  scale_y_continuous(limits = c(-500, 250)) +
+  ylab('\n\n ') +
+  geom_text(x = 19, y = -450, label = 'ABC-pollen', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+plot_abc_enm <- ggplot(abc_enm, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent))+ 
+  geom_boxplot(middle = abc_enm$BVcent, 
+               lower = abc_enm$BVcent0p025,
+               upper = abc_enm$BVcent0p975)+
+  # scale_x_discrete(limits = c("21000-20010","20010-19020","19020-18030","18030-17040",
+  #                             "17040-16050","16050-15060","15060-14070","14070-13080",
+  #                             "13080-12090","12090-11100","11100-10110","10110-9120",
+  #                             "9120-8130","8130-7140","7140-6150","6150-5160",
+  #                             "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
+  scale_y_continuous(limits = c(-500, 250)) +
+  ylab('\n\n ') +
+  xlab('Years before present') +
+  geom_text(x = 19, y = -450, label = 'ABC-ENM', size = 6) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 14),
+        axis.text.x = element_text(size = 12, angle = 45, vjust = 1, hjust = 1),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 12))
+
+g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
+                 ncol = 1, heights = c(1,1,1,1,1))
+ggsave(file = 'figures/BVSs_all_methods_V2.png', plot = g, height = 10, width = 7, units = 'in')
