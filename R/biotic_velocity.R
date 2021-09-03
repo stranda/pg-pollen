@@ -1,4 +1,4 @@
-# setwd('C:/Users/abrow/Documents/pg-pollen')
+setwd('C:/Users/abrow/Documents/pg-pollen')
 require(tidyr)
 require(ggplot2)
 require(rasterVis)
@@ -10,6 +10,8 @@ require(rgeos)
 require(sp)
 require(dplyr)
 require(holoSimCell)
+require(gridExtra)
+require(ggrepel)
 
 ################################################
 ## CALCULATE AND PLOT BIOTIC VELOCITIES
@@ -116,8 +118,14 @@ bvs <- bind_rows(bv_list)
 saveRDS(bvs, 'output/bvs_n50_latent_overdispersed_v3.2.RDS')
 
 #### PLOT BVS WITH UNCERTAINTY
-ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity, color = type)) +
-  geom_boxplot(alpha = 0.7) + 
+time$time_label <- NA
+for(i in 2:nrow(time)){
+  time$time_label[i] <- paste0(time$time_mid[i], ' - ', time$time_mid[i-1])
+}
+
+ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity)) +
+  geom_boxplot() + 
+  scale_x_discrete(labels = rev(time$time_label[-1])) +
   xlab('\nYears before present') +
   ylab('Centroid velocity (m/yr)\n') +
   labs(color = '') +
@@ -126,8 +134,7 @@ ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity, color = type)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/BVs.png', 
-       width = 9, height = 4, unit = 'in')
+ggsave('figures/BVs.png', width = 9, height = 4, unit = 'in')
 
 
 
@@ -143,11 +150,11 @@ proj <- proj4string(sim)
 # read in fraxinus predictions for each of the 50 iterations
 # subset to only LGM predictions
 grid <- readRDS('data/grid_3.0.RDS')
-frax_lgm <- readRDS('output/frax_preds_mean_3.2_latent_overdispersed.RDS')
-frax_lgm <- frax_lgm[,,22]
+frax <- readRDS('output/frax_preds_n50_3.2_latent_overdispersed.RDS')
+frax_lgm <- frax[,,22]
 
 # convert data array to list of dataframes (1 dataframe for each iteration)
-n_iter <- 50
+n_iter <- dim(frax_lgm)[1]
 lgm_list <- list()
 for(i in 1:n_iter){
   lgm_list[[i]] <- data.frame(cbind(grid, frax_lgm[i,]))
@@ -171,13 +178,26 @@ for(i in 1:n_iter){
   lgm_resamp[[i]] <- raster::resample(x = lgm_raster[[i]], y = LGM)
   lgm_resamp[[i]] <- mask(x = lgm_resamp[[i]], mask = LGM)
 }
-saveRDS(lgm_resamp, 'output/lgm_frax_masked_for_refuge_n50.RDS')
 
-# refuge locations
+# weight relative abundance by proportion of cell covered by land (for cells with partial glacial coverage)
+# partial glacial coverage is indicated as proportion of cell covered by glacier
+# first, convert this value to proportion of cell covered by land
+lgm_revalue <- LGM
+values(lgm_revalue) <- 1 - values(lgm_revalue)
+
+# multiply relative abundance predictions by proportion of cell covered by land
+lgm_preds_revalue <- lgm_resamp
+for(i in 1:n_iter){
+    lgm_preds_revalue[[i]] <- overlay(lgm_preds_revalue[[i]], lgm_revalue,
+                                             fun = function(x, y){(x * y)})
+}
+
+# identify refuge locations
+# can specify the threshold you want, in units of relative abundance
 refuge_list <- list()
 for(i in 1:n_iter){
-  refuge_list[[i]] <- assignRefugiaFromAbundanceRaster(abund = lgm_resamp[[i]],
-                                                       sim = sim, threshold = 0.01)
+  refuge_list[[i]] <- assignRefugiaFromAbundanceRaster(abund = lgm_preds_revalue[[i]],
+                                                       sim = sim, threshold = 0.025)
 }
 
 # check to make sure all iterations have been assigned a refuge
@@ -188,13 +208,15 @@ for(i in 1:n_iter){
 anyNA(test)  # should be FALSE
 
 # save as list of rasters
+# THIS WILL BE IN REFUGIA INPUT FOR POLLEN-INTEGRATED MODEL
 refuge_for_allan <- list()
 for(i in 1:n_iter){
   refuge_for_allan[[i]] <- refuge_list[[i]][["simulationScale"]]@layers[[2]]
 }
 saveRDS(refuge_for_allan, 'output/refuge_rasters_n50.RDS')
 
-# check out all refugia plots
+
+# PLOT 50 REFUGIA AS ANIMATED GIF
 for(i in 1:n_iter){
   jpeg(paste('figures/refugia_gif/iter', i, '.jpeg', sep = ''))
   plot(refuge_list[[i]]$simulationScale@layers[[2]])
@@ -208,18 +230,14 @@ m <- image_animate(m, fps = 1)
 image_write(m, "figures/refugia_gif/refugia_n50.gif")
 
 
-# convert refuge locations to dataframe so you can plot on a map
-refuge_df <- as.data.frame(refuge$simulationScale, xy = TRUE)
-refuge_df$refugiaId <- as.integer(refuge_df$refugiaId)
-refuge_df$refugiaId_fac <- as.factor(refuge_df$refugiaId)
-
-hist(refuge_df$refugiaAbund, 
-     main = 'Pollen abund preds on refugia\n0.02 rel abund threshold', 
-     xlab = '',
-     breaks = 10)
-
-ylim <- c(frax_masked@extent@ymin, frax_masked@extent@ymax)
-xlim <- c(frax_masked@extent@xmin, frax_masked@extent@xmax)
+# PLOT 50 REFUGIA ON SINGLE PDF
+# convert refugia rasters to dataframes for plotting in ggplot2
+refuge_dfs <- list()
+for(i in 1:n_iter){
+  refuge_dfs[[i]] <- raster::as.data.frame(refuge_list[[i]]$simulationScale@layers[[2]], xy = TRUE)
+  refuge_dfs[[i]]$iter <- i
+}
+refuge_df <- bind_rows(refuge_dfs)
 
 # north america shapefiles
 na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
@@ -229,53 +247,48 @@ cont_shp <- subset(na_shp,
 lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
 lake_shp <- sp::spTransform(lake_shp, proj)
 
-# if you want to plot raw data on top of refugia, run this code
-# READ RAW DATA
-version <- 'Dec15'
-dat <- readRDS(paste0('output/polya-gamma-dat_', version, '.RDS'))
-taxa <- dat$taxa.keep
-frax_num <- which(taxa == 'Fraxinus')
+ylim <- c(min(refuge_df$y), max(refuge_df$y))
+xlim <- c(min(refuge_df$x), max(refuge_df$x))
 
-frax <- data.frame(dat$y[, frax_num,])
-frax <- cbind(dat$locs, frax)
-frax$x <- frax$x * 1000
-frax$y <- frax$y * 1000
+# create discrete color scale for plotting
+# make sure 0s aren't color-coded, since they aren't refugia
+breaks_vec <- c(0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.45)
+breaks <- cut(refuge_df$refugiaAbund, breaks = breaks_vec, include.lowest = TRUE, labels = FALSE)
+refuge_df$breaks <- breaks
+breaks_vec <- c('0.025 - 0.05', '0.05 - 0.075', '0.075 - 0.1', '0.1 - 0.15', '0.15 - 0.2', 
+                '0.2 - 0.3', '0.3 - 0.45')
+my_colors <- RColorBrewer::brewer.pal(9, 'YlOrRd')[3:9]
 
-frax <- pivot_longer(data = frax, cols = X1:X22, 
-                     names_to = 'time', values_to = 'abund')
-frax$time <- substr(frax$time, start = 2, stop = nchar(frax$time))
-frax$time <- as.integer(frax$time)
+plot_list <- list()
+for(i in 1:5){
+  plot_list[[i]] <- ggplot(refuge_df) + 
+    geom_tile(aes(x = x, y = y, fill = as.factor(breaks))) + 
+    scale_fill_manual(values = my_colors, labels = breaks_vec) +
+    scale_y_continuous(limits = ylim) + 
+    scale_x_continuous(limits = xlim) +
+    geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
+    geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
+    labs(fill = 'Relative\nabund') +
+    facet_wrap_paginate(~ iter, nrow = 5, ncol = 2, page = i) +
+    theme_void() +
+    theme(strip.text = element_blank(),
+          legend.title = element_text(size = 10),
+          legend.text = element_text(size = 10)) +
+    coord_equal()
+}
+plots <- marrangeGrob(plot_list, nrow = 1, ncol = 1)  # takes several minutes to run
+ggsave('figures/frax_refugia_latent_n50.pdf', plots, 
+       height = 15, width = 8.5, units = 'in')
 
-ggplot(data = refuge_df) +
-  geom_tile(aes(x = x, y = y, fill = refugiaId_fac)) +
-  scale_fill_discrete(na.value = 'white') +
-  geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-  geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-  scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  # geom_point(data = frax[frax$time == 21 & !is.na(frax$abund),], aes(x = x, y = y),
-  #            pch = 21, color = 'black', fill = 'black', alpha = 0.7, size = 3) +
-  labs(fill = 'Refuge ID', title = 'Threshold: 0.04 rel abund \n2 refugia') +
-  theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5, size = 14),
-        axis.ticks = element_blank(),
-        axis.text = element_blank(),
-        axis.title = element_blank(),
-        line = element_blank(),
-        # legend.title = element_text(size = 16),
-        # legend.text = element_text(size = 14),
-        legend.position = 'none') +
-  coord_equal()
-ggsave('figures/frax_refuge_0.04threshold_map.png')
 
 
 
 ##########################################################
 # PLOT CENTROID BV FOR ALL 5 METHODS
 ##########################################################
-require(gridExtra)
+# require(gridExtra)
 # read bv data
-setwd('C:/Users/abrow/Documents/green_ash')
+# setwd('C:/Users/abrow/Documents/green_ash')
 abc_enm <- read.csv('BV table ENM nnet_0.1.csv', stringsAsFactors = FALSE)
 abc <- read.csv('BV table NAIVE nnet_0.1.csv', stringsAsFactors = FALSE)
 abc_pollen <- read.csv('BV_table_POLLEN_nnet_0.1.csv', stringsAsFactors = FALSE)
@@ -590,15 +603,22 @@ ggsave(file = 'figures/BVSs_all_methods.png', plot = g, height = 10, width = 7, 
 #################################################
 # PLOT CENTROIDS OF FRAX RANGE OVER TIME ON MAP
 #################################################
+# require(ggrepel)
 # use biotic velocity dataframe
 bvs <- readRDS('output/bvs_n50_latent_overdispersed_v3.2.RDS')
-ggplot(data = bvs) +
-  geom_point(aes(x = centroidLong, y = centroidLat, fill = timeTo),
+
+# take average BV across iterations
+bvs_summ <- bvs %>% 
+  dplyr::group_by(timeFrom) %>% 
+  dplyr::summarize(x = mean(centroidLong), y = mean(centroidLat))
+
+ggplot(data = bvs_summ) +
+  geom_point(aes(x = x, y = y, fill = timeFrom),
              size = 4, alpha = 0.9, pch = 21) +
   # geom_text(aes(x = centroidLong, y = centroidLat, 
   #               label = ifelse(timeTo > -7000, as.character(timeTo),''))) +
-  geom_label_repel(aes(x = centroidLong, y = centroidLat, 
-                       label = ifelse(timeTo > -3000, as.character(timeTo),'')),
+  geom_label_repel(aes(x = x, y = y, 
+                       label = ifelse(timeFrom > -6000, as.character(timeFrom),'')),
                    box.padding   = 0.5,
                    point.padding = 0.5,
                    segment.color = 'red',
@@ -607,7 +627,7 @@ ggplot(data = bvs) +
   geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) +
   scale_y_continuous(limits = c(-700000,1500000)) +
   scale_x_continuous(limits = c(-500000,2500000)) +
-  labs(title = 'Centroid BVs (no interpolation)') +
+  labs(title = 'Fraxinus range centroids over time') +
   theme_classic() +
   theme(axis.ticks = element_blank(),
         axis.text = element_blank(),
