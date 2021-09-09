@@ -1,7 +1,7 @@
 
-library(neotoma)
-library(analogue)
-library(Bchron)
+# library(neotoma)
+# library(analogue)
+# library(Bchron)
 library(ggplot2)
 library(data.table)
 library(sp)
@@ -12,7 +12,7 @@ library(dplyr)
 library(tidyr)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version = '3.2'  # v. 3.2 is where we use fixed time bins parallel to those of ABC, ENM
+version = '4.0'  # v. 3.2 is where we use fixed time bins parallel to those of ABC, ENM
 
 # READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
 # USA Contiguous albers equal area
@@ -22,6 +22,7 @@ version = '3.2'  # v. 3.2 is where we use fixed time bins parallel to those of A
 
 # Get raster masks and spatial domain you want to use
 # (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
+# "+proj=aea +lat_0=37.5 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs"
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
 proj <- proj4string(stack)
 
@@ -39,10 +40,9 @@ long_west = coords@coords[1,1]
 long_east = coords@coords[2,1]
 
 # load pollen data 
-compiled.cores <- read.csv('data/pollen_north_america_v6.0.csv', stringsAsFactors = FALSE)
+compiled.cores <- read.csv('data/pollen_north_america_ABI_v7.0.csv', stringsAsFactors = FALSE)
 load('data/sites_north_america.rdata')
-load('data/pollen.equiv.rda')
-
+# load('data/pollen.equiv.rda')
 sites.cores = sites_north_america
 
 compiled.cores = data.frame(long = sites.cores[match(compiled.cores$dataset_id, sites.cores$datasetid), 'longitude'],
@@ -64,7 +64,7 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             ylim = c(lat_lo, lat_hi))
 
 # until there's an answer as to why we get age NAs after running 'compile_downloads'...
-# for now just remove rows with age NAs
+# for now just remove rows with age NAs (143 of them as of 7 Sept 2021)
 compiled.cores <- compiled.cores[!is.na(compiled.cores$age), ]
 
 # # translate any dates in radiocarbon years to calendar years
@@ -92,6 +92,14 @@ compiled.cores <- compiled.cores[compiled.cores$lat < lat_hi &
                             compiled.cores$long > long_west & 
                             compiled.cores$long < long_east ,]
 
+# remove pollen cores from isolated locations (islands, mexico)
+bermuda <- compiled.cores[compiled.cores$lat < 34 & compiled.cores$long > -78, ]
+# bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
+# mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
+# remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
+remove.sites <- bermuda %>% distinct()
+compiled.cores <- compiled.cores[!(compiled.cores$siteid) %in% remove.sites$siteid,]
+
 # visualize subsetted data
 map <- map_data("world")
 ggplot(data = data.frame(map), aes(long, lat)) + 
@@ -106,14 +114,6 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             xlim = c(long_west, -59),
             ylim = c(lat_lo, lat_hi))
 
-# remove pollen cores from isolated locations (islands, mexico)
-bermuda <- compiled.cores[compiled.cores$lat < 34 & compiled.cores$long > -78, ]
-# bahamas_cuba <- with(compiled.cores, compiled.cores[lat < 28 & long > -80, ])
-# mexico <- with(compiled.cores, compiled.cores[lat < 23, ])
-# remove.sites <- rbind(bermuda, bahamas_cuba, mexico)
-remove.sites <- bermuda %>% distinct()
-compiled.cores <- compiled.cores[!(compiled.cores$siteid) %in% remove.sites$siteid,]
-
 # convert projection to proj
 sp::coordinates(compiled.cores) <- ~long+lat
 sp::proj4string(compiled.cores) <- sp::CRS('+init=epsg:4326')
@@ -124,27 +124,25 @@ colnames(xy) = c('x', 'y')
 # construct data frame with re-projected coordinates
 compiled.cores = data.frame(xy, compiled.cores)
 compiled.cores = compiled.cores[,which(colnames(compiled.cores)!= 'optional')]
-# save this for later when you'll need to calculate relative proportions for model validation
-# saveRDS(compiled.cores, 'data/compiled_cores_P25.RDS')
 
 # remove non-tree taxa
-taxa.nontree <- c('Other', 'Prairie.Forbs', 'Poaceae', 'Cyperaceae')
+taxa.nontree <- c('CYPERACEAE')
 tree.cores <- compiled.cores[, which(!(colnames(compiled.cores) %in% taxa.nontree))]
 
 # remove sites with no tree pollen counts
 # i.e., rows that contain only zeros/NAs across all taxa
-start_col <- which(colnames(tree.cores) == 'Abies')
+start_col <- which(colnames(tree.cores) == 'ageboundyounger') + 1
 tree.cores$sum <- apply(tree.cores[,start_col:ncol(tree.cores)], 1, function(x) sum(x, na.rm=TRUE))
 tree.cores <- tree.cores[tree.cores$sum > 0, ]
 tree.cores <- tree.cores %>% dplyr::select(-sum)
 
 # specify which tree taxa to keep
 # use taxa with highest relative proportions
-props <- tree.cores[,start_col:ncol(tree.cores)]/rowSums(tree.cores[,13:ncol(tree.cores)], na.rm = TRUE)
+props <- tree.cores[,start_col:ncol(tree.cores)]/rowSums(tree.cores[,start_col:ncol(tree.cores)], na.rm = TRUE)
 props <- pivot_longer(props, cols = colnames(props), names_to = 'taxon', values_to = 'props')
 props <- props %>% group_by(taxon) %>% summarise(props = sum(props))
 props <- props %>% arrange(desc(props))
-taxa.keep <- props[1:13, ]
+taxa.keep <- props[1:15, ]
 taxa.keep <- as.character(taxa.keep$taxon)
 
 # ASSIGN TIME CHUNKS
@@ -189,7 +187,8 @@ for(i in 1:n_times){
   paleo_time[[i]] <- left_join(paleo_xyid, paleo_time[[i]], by = c('x','y'))
   paleo_time[[i]][,4:ncol(paleo_time[[i]])] <- apply(paleo_time[[i]][,4:ncol(paleo_time[[i]])], c(1,2), as.integer)
 }
-
+taxa.keep <- colnames(paleo_time[[1]])
+taxa.keep <- taxa.keep[!taxa.keep %in% c('x', 'y', 'id')]
 
 # CONSTRUCT DATA LIST, INCLUDING LOCATIONS, INTEGER ARRAY, AND TAXA.KEEP
 paleo_locs <- paleo_time[[1]][,c('x','y','id')]
