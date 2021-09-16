@@ -19,7 +19,7 @@ require(ggrepel)
 
 # read prediction output (50 iterations randomly sampled from all 1000 model iterations)
 locs_grid <- readRDS('data/grid_3.1.RDS')
-preds <- readRDS('output/frax_preds_n50_3.2_latent_overdispersed.RDS')
+preds <- readRDS('output/preds_frax_n200_v4.0.RDS')
 
 # specify time bins; use median of time bins for subsequent work
 time <- c(-70, seq(705, by = 990, length.out = 22))
@@ -115,7 +115,7 @@ for(i in 1:n_iter){
 
 # convert list of dataframes to single dataframe
 bvs <- bind_rows(bv_list)
-saveRDS(bvs, 'output/bvs_n50_latent_overdispersed_v3.2.RDS')
+saveRDS(bvs, 'output/bvs_n200_v4.0.RDS')
 
 #### PLOT BVS WITH UNCERTAINTY
 time$time_label <- NA
@@ -134,152 +134,7 @@ ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/BVs.png', width = 9, height = 4, unit = 'in')
-
-
-
-
-################################################
-## CALCULATE AND PLOT REFUGE LOCATIONS
-################################################
-
-# read in 'simulated' dataframe
-sim <- raster('data/map-data/study_region_resampled_to_genetic_demographic_simulation_resolution.tif')
-proj <- proj4string(sim)
-
-# read in fraxinus predictions for each of the 50 iterations
-# subset to only LGM predictions
-grid <- readRDS('data/grid_3.0.RDS')
-frax <- readRDS('output/frax_preds_n50_3.2_latent_overdispersed.RDS')
-frax_lgm <- frax[,,22]
-
-# convert data array to list of dataframes (1 dataframe for each iteration)
-n_iter <- dim(frax_lgm)[1]
-lgm_list <- list()
-for(i in 1:n_iter){
-  lgm_list[[i]] <- data.frame(cbind(grid, frax_lgm[i,]))
-  names(lgm_list[[i]]) <- c('x','y','pred')
-}
-
-# convert dfs to rasters
-lgm_raster <- list()
-for(i in 1:n_iter){
-  lgm_raster[[i]] <- rasterFromXYZ(lgm_list[[i]], crs = CRS(proj))
-}
-
-# read in masking rasters, extract mask at LGM
-stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')
-LGM <- stack$study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.1  # LGM
-LGM[LGM == 1] <- NA  # convert glacial values to NAs
-
-# mask out glacial coverage and lakes/ocean
-lgm_resamp <- list()
-for(i in 1:n_iter){
-  lgm_resamp[[i]] <- raster::resample(x = lgm_raster[[i]], y = LGM)
-  lgm_resamp[[i]] <- mask(x = lgm_resamp[[i]], mask = LGM)
-}
-
-# weight relative abundance by proportion of cell covered by land (for cells with partial glacial coverage)
-# partial glacial coverage is indicated as proportion of cell covered by glacier
-# first, convert this value to proportion of cell covered by land
-lgm_revalue <- LGM
-values(lgm_revalue) <- 1 - values(lgm_revalue)
-
-# multiply relative abundance predictions by proportion of cell covered by land
-lgm_preds_revalue <- lgm_resamp
-for(i in 1:n_iter){
-    lgm_preds_revalue[[i]] <- overlay(lgm_preds_revalue[[i]], lgm_revalue,
-                                             fun = function(x, y){(x * y)})
-}
-
-# identify refuge locations
-# can specify the threshold you want, in units of relative abundance
-refuge_list <- list()
-for(i in 1:n_iter){
-  refuge_list[[i]] <- assignRefugiaFromAbundanceRaster(abund = lgm_preds_revalue[[i]],
-                                                       sim = sim, threshold = 0.025)
-}
-
-# check to make sure all iterations have been assigned a refuge
-test <- rep(NA, n_iter)
-for(i in 1:n_iter){
-  test[i] <- refuge_list[[i]]$meanRefugeAbund
-}
-anyNA(test)  # should be FALSE
-
-# save as list of rasters
-# THIS WILL BE IN REFUGIA INPUT FOR POLLEN-INTEGRATED MODEL
-refuge_for_allan <- list()
-for(i in 1:n_iter){
-  refuge_for_allan[[i]] <- refuge_list[[i]][["simulationScale"]]@layers[[2]]
-}
-saveRDS(refuge_for_allan, 'output/refuge_rasters_n50.RDS')
-
-
-# PLOT 50 REFUGIA AS ANIMATED GIF
-for(i in 1:n_iter){
-  jpeg(paste('figures/refugia_gif/iter', i, '.jpeg', sep = ''))
-  plot(refuge_list[[i]]$simulationScale@layers[[2]])
-  dev.off()
-}
-# make gif of plots
-require(magick)
-frames <- paste('figures/refugia_gif/iter', 1:50, '.jpeg', sep = '')
-m <- image_read(frames)
-m <- image_animate(m, fps = 1)
-image_write(m, "figures/refugia_gif/refugia_n50.gif")
-
-
-# PLOT 50 REFUGIA ON SINGLE PDF
-# convert refugia rasters to dataframes for plotting in ggplot2
-refuge_dfs <- list()
-for(i in 1:n_iter){
-  refuge_dfs[[i]] <- raster::as.data.frame(refuge_list[[i]]$simulationScale@layers[[2]], xy = TRUE)
-  refuge_dfs[[i]]$iter <- i
-}
-refuge_df <- bind_rows(refuge_dfs)
-
-# north america shapefiles
-na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
-na_shp <- sp::spTransform(na_shp, proj)
-cont_shp <- subset(na_shp,
-                   (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
-lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
-lake_shp <- sp::spTransform(lake_shp, proj)
-
-ylim <- c(min(refuge_df$y), max(refuge_df$y))
-xlim <- c(min(refuge_df$x), max(refuge_df$x))
-
-# create discrete color scale for plotting
-# make sure 0s aren't color-coded, since they aren't refugia
-breaks_vec <- c(0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.45)
-breaks <- cut(refuge_df$refugiaAbund, breaks = breaks_vec, include.lowest = TRUE, labels = FALSE)
-refuge_df$breaks <- breaks
-breaks_vec <- c('0.025 - 0.05', '0.05 - 0.075', '0.075 - 0.1', '0.1 - 0.15', '0.15 - 0.2', 
-                '0.2 - 0.3', '0.3 - 0.45')
-my_colors <- RColorBrewer::brewer.pal(9, 'YlOrRd')[3:9]
-
-# plot across multiple PDF pages
-plot_list <- list()
-for(i in 1:5){
-  plot_list[[i]] <- ggplot(refuge_df) + 
-    geom_tile(aes(x = x, y = y, fill = as.factor(breaks))) + 
-    scale_fill_manual(values = my_colors, labels = breaks_vec) +
-    scale_y_continuous(limits = ylim) + 
-    scale_x_continuous(limits = xlim) +
-    geom_path(data = cont_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-    geom_path(data = lake_shp, aes(x = long, y = lat, group = group), alpha = 0.5) +
-    labs(fill = 'Relative\nabund') +
-    facet_wrap_paginate(~ iter, nrow = 5, ncol = 2, page = i) +
-    theme_void() +
-    theme(strip.text = element_blank(),
-          legend.title = element_text(size = 10),
-          legend.text = element_text(size = 10)) +
-    coord_equal()
-}
-plots <- marrangeGrob(plot_list, nrow = 1, ncol = 1)  # takes several minutes to run
-ggsave('figures/frax_refugia_latent_n50.pdf', plots, 
-       height = 15, width = 8.5, units = 'in')
+ggsave('figures/frax_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
 
 
 
@@ -289,7 +144,7 @@ ggsave('figures/frax_refugia_latent_n50.pdf', plots,
 #################################################
 # require(ggrepel)
 # use biotic velocity dataframe
-bvs <- readRDS('output/bvs_n50_latent_overdispersed_v3.2.RDS')
+bvs <- readRDS('output/bvs_n200_v4.0.RDS')
 
 # take average BV across iterations
 bvs_summ <- bvs %>% 
@@ -327,7 +182,6 @@ ggplot(data = bvs_summ) +
 # PLOT BIOTIC VELOCITIES FOR ALL 5 METHODS
 ##########################################################
 # setwd('C:/Users/abrow/Documents/green_ash')
-# require(gridExtra)
 # read bv data
 abc_enm <- read.csv('bvs_enm-abc.csv', stringsAsFactors = FALSE)
 abc <- read.csv('bvs_naive_abc.csv', stringsAsFactors = FALSE)
@@ -335,7 +189,7 @@ abc_pollen <- read.csv('bvs_pollen-abc.csv', stringsAsFactors = FALSE)
 load('enm_biotic_velocities.rda')
 enm <- velocities
 rm(velocities)
-pollen <- readRDS('bvs_n50_latent_overdispersed_v3.2.RDS')
+pollen <- readRDS('bvs_n200_v4.0.RDS')
 
 # DATA PREPARATION - POLLEN
 # summarize across 50 iterations to get 97.5 and 2.5 quantiles
@@ -358,9 +212,9 @@ plot_pollen <- ggplot(pollen_summ, aes(x = reorder(factor(timeFrom), -timeFrom),
   geom_boxplot(middle = pollen_summ$BVcent,
                lower = pollen_summ$BVcent0p025,
                upper = pollen_summ$BVcent0p975) + 
-  scale_y_continuous(limits = c(0,1500)) +
+  scale_y_continuous(limits = c(0,450)) +
   ylab('\n ') +
-  geom_text(x = 3, y = 1450, label = 'Pollen', size = 6) +
+  geom_text(x = 2, y = 425, label = 'Pollen', size = 6) +
   theme_bw() +
   theme(
     axis.title.x = element_blank(),
@@ -394,9 +248,9 @@ plot_enm <- ggplot(enm_summ, aes(x = reorder(factor(timeFrom), -timeFrom), y = B
   geom_boxplot(middle = enm_summ$BVcent,
                lower = enm_summ$BVcent0p025,
                upper = enm_summ$BVcent0p975) + 
-  scale_y_continuous(limits = c(0, 400)) +
+  scale_y_continuous(limits = c(0, 450)) +
   ylab('\n ') +
-  geom_text(x = 3, y = 375, label = 'ENM', size = 6) +
+  geom_text(x = 2, y = 425, label = 'ENM', size = 6) +
   theme_bw() +
   theme(
     axis.title.x = element_blank(),
@@ -411,9 +265,9 @@ plot_abc <- ggplot(abc, aes(x = reorder(factor(timeFrom), -timeFrom), y = BVcent
   geom_boxplot(middle = abc$BVcent, 
                lower = abc$BVcent0p025,
                upper = abc$BVcent0p975)+
-  scale_y_continuous(limits = c(0, 400)) +
+  scale_y_continuous(limits = c(0, 450)) +
   ylab('Centroid BV (m/yr)\n') +
-  geom_text(x = 3, y = 375, label = 'Naive ABC', size = 6) +
+  geom_text(x = 3, y = 425, label = 'Naive ABC', size = 6) +
   theme_bw() +
   theme(
     axis.title.x = element_blank(),
@@ -433,10 +287,10 @@ plot_abc_enm <- ggplot(abc_enm, aes(x = reorder(factor(timeFrom), -timeFrom), y 
   #                             "13080-12090","12090-11100","11100-10110","10110-9120",
   #                             "9120-8130","8130-7140","7140-6150","6150-5160",
   #                             "5160-4170","4170-3180","3180-2190","2190-1200","1200-210"))+
-  scale_y_continuous(limits = c(0, 400)) +
+  scale_y_continuous(limits = c(0, 450)) +
   ylab('\n ') +
   xlab('Years before present') +
-  geom_text(x = 3, y = 375, label = 'ABC-ENM', size = 6) +
+  geom_text(x = 3, y = 425, label = 'ABC-ENM', size = 6) +
   theme_bw() +
   theme(
     axis.title.x = element_text(size = 14),
@@ -451,9 +305,9 @@ plot_abc_pollen <- ggplot(abc_pollen, aes(x = reorder(factor(timeFrom), -timeFro
   geom_boxplot(middle = abc_pollen$BVcent, 
                lower = abc_pollen$BVcent0p025,
                upper = abc_pollen$BVcent0p975)+
-  scale_y_continuous(limits = c(0, 400)) +
+  scale_y_continuous(limits = c(0, 450)) +
   ylab('\n ') +
-  geom_text(x = 3, y = 375, label = 'ABC-pollen', size = 6) +
+  geom_text(x = 3, y = 425, label = 'ABC-pollen', size = 6) +
   theme_bw() +
   theme(
     axis.title.x = element_blank(),
@@ -462,8 +316,8 @@ plot_abc_pollen <- ggplot(abc_pollen, aes(x = reorder(factor(timeFrom), -timeFro
         axis.text.y = element_text(size = 12))
 
 g <- arrangeGrob(plot_pollen, plot_enm, plot_abc, plot_abc_pollen, plot_abc_enm, 
-                 ncol = 1, heights = c(1,1,1,1,1))
-ggsave(file = 'figures/BVs_all_methods.png', plot = g, height = 10, width = 7, units = 'in')
+                 ncol = 1, heights = c(1,1,1,1,1.15))
+ggsave(file = 'figures/BVs_all_methods_v4.0.png', plot = g, height = 10, width = 7, units = 'in')
 
 
 
