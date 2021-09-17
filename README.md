@@ -11,10 +11,8 @@ The R code in this repo runs a spatiotemporal multinomial model to estimate tree
 * Read data from pollen_migrated_ST.R
 * Specify model parameters, priors, and initial conditions before running model
 
-### 3. model_assess_ST.R
-* Read model output from estimate_pars_ST.R
-* Create trace plots to check parameter estimation for tau^2, theta1, theta2, beta, and rho
-* Create maps of estimated relative proportions (i.e., pis, calculated from eta parameter)
+### 3. evaluate_fit_ST.R, examine-posteriors.R, plot-trace.R
+* Model assessments - trace plots of posteriors, evaluating model fit, model comparisons
 
 ### 4. build_grid.R
 * Create regular grid across spatial extent of study, on which predictions will be made in the next step
