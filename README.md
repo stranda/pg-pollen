@@ -1,7 +1,7 @@
 # Spatiotemporal model for fossil pollen counts
 The R code in this repo runs a spatiotemporal multinomial model to estimate tree pollen relative abundances across eastern North America over the last 21,000 years (i.e., since the Last Glacial Maximum, or LGM). Additionally, we use prediction output from this model to calculate biotic velocity (i.e., migration rate) of trees since the LGM. Here is the order in which the files should be run, along with descriptions.
 
-### 1. pull_pollen_ST.R
+### 1. pollen_migrated_ST.R
 * Read in fossil pollen data, which is already downloaded from neotomadb.org
 * Data cleaning - remove undesired taxa, locations, ages
 * Construct time bins, allowing pollen data to be binned into discrete time groupings
