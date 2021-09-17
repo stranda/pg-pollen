@@ -7,8 +7,8 @@ The R code in this repo runs a spatiotemporal multinomial model to estimate tree
 * Construct time bins, allowing pollen data to be binned into discrete time groupings
 * Restructure data into arrays
 
-### 2. estimate_pars_ST.R
-* Read data from pull_pollen_ST.R
+### 2. estimate_pars_ST_*.R
+* Read data from pollen_migrated_ST.R
 * Specify model parameters, priors, and initial conditions before running model
 
 ### 3. model_assess_ST.R
@@ -19,8 +19,8 @@ The R code in this repo runs a spatiotemporal multinomial model to estimate tree
 ### 4. build_grid.R
 * Create regular grid across spatial extent of study, on which predictions will be made in the next step
 
-### 5. predict_ST.R
-* Read model output from estimate_pars_ST.R and grid from build_grid.R
+### 5. predict_ST_*.R
+* Read model output from estimate_pars_ST_*.R and grid from build_grid.R
 * Run prediction function
 
 ### 6. plot_predictions.R
