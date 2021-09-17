@@ -1,7 +1,4 @@
 
-# library(neotoma)
-# library(analogue)
-# library(Bchron)
 library(ggplot2)
 library(data.table)
 library(sp)
@@ -10,15 +7,7 @@ library(mapproj)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
-
-# setwd('C:/Users/abrow/Documents/pg-pollen')
-version = '4.0'  # v. 3.2 is where we use fixed time bins parallel to those of ABC, ENM
-
-# READ SHAPEFILES AND ESTABLISH SPATIAL DOMAIN
-# USA Contiguous albers equal area
-# OLD PROJECTION
-# proj_out <- '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 
-# +ellps=GRS80 +datum=NAD83 +units=m +no_defs'
+version = '4.0'  # v4.0 uses the dataset with corrected lookup table
 
 # Get raster masks and spatial domain you want to use
 # (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
@@ -42,9 +31,7 @@ long_east = coords@coords[2,1]
 # load pollen data 
 compiled.cores <- read.csv('data/pollen_north_america_ABI_v7.0.csv', stringsAsFactors = FALSE)
 load('data/sites_north_america.rdata')
-# load('data/pollen.equiv.rda')
 sites.cores = sites_north_america
-
 compiled.cores = data.frame(long = sites.cores[match(compiled.cores$dataset_id, sites.cores$datasetid), 'longitude'],
                            lat = sites.cores[match(compiled.cores$dataset_id, sites.cores$datasetid), 'latitude'],
                            compiled.cores)
@@ -64,27 +51,11 @@ ggplot(data = data.frame(map), aes(long, lat)) +
             ylim = c(lat_lo, lat_hi))
 
 # until there's an answer as to why we get age NAs after running 'compile_downloads'...
-# for now just remove rows with age NAs (143 of them as of 7 Sept 2021)
+# for now just remove rows with age NAs (143 of them as of 17 Sept 2021)
 compiled.cores <- compiled.cores[!is.na(compiled.cores$age), ]
 
-# # translate any dates in radiocarbon years to calendar years
-# radio.years <- (compiled.cores$agetype %in% "Radiocarbon years BP") &
-#   (compiled.cores$age > 95 ) &
-#   (compiled.cores$age < 50193)
-# sryears <- sum(radio.years, na.rm = TRUE)
-# 
-# # BChronCalibrate is in the BChron package:
-# calibrated <- BchronCalibrate(compiled.cores$age[radio.years],
-#                               ageSds = rep(100, sryears),
-#                               calCurves = rep("intcal20", sryears))
-# #  we want the weighted means from "calibrated"
-# wmean.date <- function(x) sum(x$ageGrid*x$densities / sum(x$densities))
-# compiled.cores$age[radio.years] <- sapply(calibrated, wmean.date)
-# # saveRDS(compiled.cores, 'data/compiled_cores_P25_all_times.RDS')
-
-# remove any samples with ages greater than 50000 YBP
+# remove any samples with ages greater than 21500 YBP
 compiled.cores <- compiled.cores[which(compiled.cores$age < 21500), ]
-hist(compiled.cores$age)
 
 # only keep pollen from within domain of interest
 compiled.cores <- compiled.cores[compiled.cores$lat < lat_hi & 
@@ -164,7 +135,6 @@ paleo_xyid$id <- as.character(seq(1, nrow(paleo_xyid), by = 1))
 # separate dataframe into list of dataframes, one for each time chunk, remove excess columns
 paleo_time <- split(paleo, f = paleo$cut)
 
-
 # CREATE 'OTHER' TAXON BY COMBINING TREE COUNTS FROM TREES NOT BEING MODELED INDIVIDUALLY
 # (if you want to retain 'Other tree' column, you'll need to use length(n_taxa) + 1 in later code)
 # SUM POLLEN COUNTS BY TIME PERIOD/SITE
@@ -208,45 +178,3 @@ paleo_locs <- paleo_locs[,c('x','y')]
 saveRDS(paleo_dat_array, paste0('data/', 'pollen_dat_', version, '.RDS'))
 saveRDS(paleo_locs, paste0('data/', 'pollen_locs_', version, '.RDS'))
 saveRDS(taxa.keep, paste0('data/', 'taxa_', version, '.RDS'))
-
-# FOR CHECKING TO SEE IF MODERN TIME BIN AFFECTS THE REST OF THE ESTIMATES, 
-# CREATE DATA ARRAY WITHOUT MODERN TIME BIN
-paleo_dat_array_sub <- paleo_dat_array[, , -1]
-saveRDS(paleo_dat_array_sub, paste0('data/', 'pollen_dat_no_modern_', version, '.RDS'))
-
-
-
-#ANDRIA'S EXTRA CODE - TRYING TO FIND SITE UNDER GLACIER
-dat_array = readRDS('data/pollen_dat_1.0.RDS')
-locs = readRDS('data/pollen_locs_1.0.RDS')
-taxa.keep = readRDS('data/pollen_taxa_1.0.RDS')
-
-dat_lgm = dat_array[,,22]
-colnames(dat_lgm) = c(taxa.keep,"Other")
-dat = data.frame(locs, dat_lgm)
-dat = dat[!is.na(dat[,3]),]
-
-test_sub = test[which((test$cut==22)&(test$lat>49)),]
-
-
-na_shp <- readOGR("data/map-data/NA_States_Provinces_Albers.shp", "NA_States_Provinces_Albers")
-na_shp <- sp::spTransform(na_shp, proj)
-cont_shp <- subset(na_shp,
-                   (NAME_0 %in% c("United States of America", "Mexico", "Canada")))
-lake_shp <- readOGR("data/map-data/Great_Lakes.shp", "Great_Lakes")
-lake_shp <- sp::spTransform(lake_shp, proj)
-
-p <- ggplot() +
-  geom_point(data = dat, aes(x = x, y = y), col = "red") +
-  geom_path(data = cont_shp, aes(x = long, y = lat, group = group)) +
-  geom_path(data = lake_shp, aes(x = long, y = lat, group = group)) #+
-  scale_y_continuous(limits = ylim) +
-  scale_x_continuous(limits = xlim) +
-  theme_classic() +
-  theme(axis.ticks = element_blank(),
-        axis.text = element_blank(),
-        axis.title = element_blank(),
-        line = element_blank(),
-        plot.title = element_text(size = 12)) +
-  coord_equal()
-print(p)
