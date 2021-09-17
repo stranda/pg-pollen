@@ -21,9 +21,8 @@ The R code in this repo runs a spatiotemporal multinomial model to estimate tree
 * Read model output from estimate_pars_ST_*.R and grid from build_grid.R
 * Run prediction function
 
-### 6. plot_predictions.R
-* Read output from predict_ST.R
-* Create maps of relative abundance predictions across time and taxa
+### 6. generate-maps_ST_*.R
+* Create maps of relative abundance predictions
 
 ### 7. biotic_velocity.R
 * Read output from predict_ST.R
