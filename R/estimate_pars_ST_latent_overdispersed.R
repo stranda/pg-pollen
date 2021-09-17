@@ -20,19 +20,19 @@ library(data.table)
 # install.packages("/home/adawson/Documents/projects/pgR", repos=NULL, type="source")
 library(pgR)
 
-version='3.1'  # v. 3.1 uses same time bins as ABC, ENM, and uses updated priors
+version='4.0'
 
 #### DATA PREP ####
-y <- readRDS(here::here('data', paste0('paleo_pollen_dat_', version, '.RDS')))
-taxa.keep <- readRDS(here::here('data', paste0('pollen_taxa_', version, '.RDS')))
-locs <- readRDS(here::here('data', paste0('paleo_pollen_locs_', version, '.RDS')))
+y <- readRDS(here::here('data', paste0('pollen_dat_', version, '.RDS')))
+taxa.keep <- readRDS(here::here('data', paste0('taxa_', version, '.RDS')))
+locs <- readRDS(here::here('data', paste0('pollen_locs_', version, '.RDS')))
 rescale <- 1e3
 
 #### RUNNING THE MODEL & SAVING OUTPUT####
 # scale locations so distance values aren't too large (from 1m to 100km units)
 locs_scaled <- locs/rescale
 N_locs_dat = nrow(locs_scaled)
-X <- matrix(rep(1, N_locs_dat),N_locs_dat, 1)
+X <- matrix(rep(1, N_locs_dat), N_locs_dat, 1)
 
 params <- default_params()
 params$n_adapt <- 2000
@@ -85,7 +85,7 @@ d <- ncol(y)
 Y = y
 X = as.matrix(X)
 locs = as.matrix(locs_scaled)
-n_cores = 1L
+n_cores = 20L
 n_chain = 1
 
 for (n in 1:dim(Y)[1]){
