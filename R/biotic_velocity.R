@@ -137,6 +137,52 @@ ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity)) +
 ggsave('figures/frax_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
 
 
+ggplot(bvs, aes(x = factor(timeFrom), y = nCentroidVelocity)) +
+  geom_boxplot() + 
+  scale_x_discrete(labels = rev(time$time_label[-1])) +
+  xlab('\nYears before present') +
+  ylab('North centroid velocity (m/yr)\n') +
+  labs(color = '') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+ggsave('figures/frax_north_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
+
+ggplot(bvs, aes(x = factor(timeFrom), y = sCentroidVelocity)) +
+  geom_boxplot() + 
+  scale_x_discrete(labels = rev(time$time_label[-1])) +
+  xlab('\nYears before present') +
+  ylab('South centroid velocity (m/yr)\n') +
+  labs(color = '') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+ggsave('figures/frax_south_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
+
+
+# side by side boxplots of 3 BV measures
+bvs_ns <- bvs %>% 
+  select(timeFrom, nCentroidVelocity, sCentroidVelocity, centroidVelocity) %>% 
+  pivot_longer(cols = 2:4, names_to = 'type', values_to = 'velocity')
+
+ggplot(bvs_ns, aes(x = factor(timeFrom), y = velocity, color = type)) +
+  geom_boxplot() + 
+  scale_x_discrete(labels = rev(time$time_label[-1])) +
+  scale_color_discrete(labels = c('Centroid', 'North centroid', 'South centroid')) +
+  xlab('\nYears before present') +
+  ylab('Velocity (m/yr)\n') +
+  labs(color = '') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        panel.grid.major.x = element_blank())
+ggsave('figures/frax_3_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
 
 
 #################################################
