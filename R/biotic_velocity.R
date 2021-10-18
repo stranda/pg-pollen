@@ -184,6 +184,29 @@ ggplot(bvs_ns, aes(x = factor(timeFrom), y = velocity, color = type)) +
         panel.grid.major.x = element_blank())
 ggsave('figures/frax_3_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
 
+# north-south, east - west movement
+bvs_nsew <- bvs %>% 
+  dplyr::select(timeFrom, nCentroidVelocity, sCentroidVelocity, 
+         eCentroidVelocity, wCentroidVelocity) %>% 
+  pivot_longer(cols = 2:5, names_to = 'type', values_to = 'velocity')
+
+ggplot(bvs_nsew, aes(x = factor(timeFrom), y = velocity, color = type)) +
+  geom_boxplot() + 
+  scale_x_discrete(labels = rev(time$time_label[-1])) +
+  scale_color_discrete(labels = c('East centroid', 'North centroid', 
+                                  'South centroid', 'West centroid')) +
+  xlab('\nYears before present') +
+  ylab('Velocity (m/yr)\n') +
+  labs(color = '') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+ggsave('figures/frax_4_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
+
+
+
 
 #################################################
 # PLOT CENTROIDS OF FRAX RANGE OVER TIME ON MAP
