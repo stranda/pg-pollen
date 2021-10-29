@@ -5,14 +5,14 @@ library(rgdal)
 library(loo)
 library(tidyverse)
 
-version <- '3.1'
+version <- '4.0'
 dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
 
 # check the Matern model -------------------------------------------------------
 
-out_matern <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))
+out_matern <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')))
 
-ll_matern_raw <- calc_ll_pg_stlm(dat$y, dat$X, out_matern)
+ll_matern_raw <- calc_ll_pg_stlm(dat$y, dat$X, out_matern) 
 # reduce memory usage if needed
 # rm(out_matern)
 
