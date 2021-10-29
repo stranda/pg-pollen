@@ -10,7 +10,7 @@ dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
 
 # check the Matern model -------------------------------------------------------
 
-out_matern <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')))
+out_matern <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '.RDS')))
 
 ll_matern_raw <- calc_ll_pg_stlm(dat$y, dat$X, out_matern) 
 # reduce memory usage if needed
