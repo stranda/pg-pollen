@@ -20,7 +20,7 @@ library(data.table)
 # install.packages("/home/adawson/Documents/projects/pgR", repos=NULL, type="source")
 library(pgR)
 
-version='3.1'  # v. 3.1 uses same time bins as ABC, ENM, and uses updated priors
+version='4.0'  # v. 3.1 uses same time bins as ABC, ENM, and uses updated priors
 
 #### DATA PREP ####
 y <- readRDS(here::here('data', paste0('paleo_pollen_dat_', version, '.RDS')))
@@ -66,8 +66,8 @@ priors$mean_range  = 7  # change from 4.6 to 7 on 6/29/21
 priors$sd_range    = sqrt(0.2)
 priors$alpha_tau   = 2  # changed from default to 2
 priors$beta_tau    = 1  # changed from default to 1
-priors$mu_beta     = -5  # changed from default to -5 on 6/29/21
-priors$Sigma_beta  = 0.5  # changed from default to 0.5 on 6/29/21
+priors$mu_beta     = 0  # changed from default to -5 on 6/29/21
+priors$Sigma_beta  = 10  # changed from default to 0.5 on 6/29/21
 
 J <- ncol(y)
 theta_mean <- c(priors$mean_range, priors$mean_nu)
