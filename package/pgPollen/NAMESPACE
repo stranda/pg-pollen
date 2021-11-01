@@ -1,0 +1,1 @@
+export("plot_trace", "plot_trace_latent")

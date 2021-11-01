@@ -115,7 +115,6 @@ if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '_l
   saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')),
           compress = FALSE)
   
-#  pushoverr::pushover(message = "Finished fitting latent overdispersed Matern model")
 }
 
 dat <- list(y = y,

@@ -88,7 +88,6 @@ if (!file.exists( here::here('output', paste0('polya-gamma-posts_', version, '_M
   saveRDS(out, here::here('output', paste0('polya-gamma-posts_', version, '_MRA.RDS')),
           compress = FALSE)
   
-  pushoverr::pushover(message = "Finished fitting MRA model")
 }
 
 dat <- list(y = y,
