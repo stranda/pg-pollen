@@ -3,10 +3,10 @@ library(ggplot2)
 library(fields)
 library(rgdal)
 
-version <- '3.1'
+version <- '4.0'
 
-out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
-dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
+out <- readRDS(here::here('output.first', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
+dat <- readRDS(here::here('output.first', paste0('polya-gamma-dat_', version,'.RDS')))
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -33,7 +33,7 @@ locs_pred = locs_grid/rescale
 #### MAKE PREDICTIONS ####
 # class(out) <- "pg_stlm"
 
-if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '_latent_overdispersed.RDS')))) {
+if (!file.exists(here::here("output.first", paste0('polya-gamma-predictions_', version, '_latent_overdispersed.RDS')))) {
   preds = predict_pg_stlm_latent_overdispersed(
     out,
     X,
@@ -47,6 +47,6 @@ if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version
   )
   saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_latent_overdispersed.RDS')),
           compress = FALSE)
-  pushoverr::pushover(message = "Finished predicting latent overdispersed Matern model")
+  #pushoverr::pushover(message = "Finished predicting latent overdispersed Matern model")
 }
 

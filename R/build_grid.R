@@ -5,7 +5,7 @@ require(rgdal)
 require(ggplot2)
 
 # setwd('C:/Users/abrow/Documents/pg-pollen')
-version <- '3.1'
+version <- '4.0'
 
 # (Adam Smith's .tif from: NSF_ABI_2018_2021/data_and_analyses/green_ash/study_region/!study_region_raster_masks)
 stack <- stack('data/map-data/study_region_daltonIceMask_lakesMasked_linearIceSheetInterpolation.tif')

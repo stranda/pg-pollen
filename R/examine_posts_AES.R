@@ -5,15 +5,15 @@ library(Cairo)
 source("R/plot-trace.R")
 source("R/plot_trace_latent.R")
 
-version <- "4.0"
+version <- "4.1"
 
-dat <- readRDS(here::here('output.first', paste0('polya-gamma-dat_', version,'.RDS')))
-out_latent <- readRDS(here::here('output.first', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
-plot_trace_latent(out_latent, base_size = 7, file = "figures/trace-plots_latent.pdf")
+dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
+out_latent <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
+plot_trace_latent(out_latent, base_size = 7, file = paste0("figures/trace-plots_latent",version,".pdf"))
 
 out=out_latent
 
-CairoPDF("figures/eta_distribution.pdf")
+CairoPDF(paste0("figures/eta_distribution",version,".pdf"))
 hist(out_latent$eta)
 dev.off()
 
@@ -39,7 +39,7 @@ for (tt in 1:n_time) {
 }
 
 
-CairoPDF("figures/params_vs_kappa.pdf")
+CairoPDF(paste0("figures/params_vs_kappa",version,".pdf"))
 plot(apply(out$eta, c(2, 3, 4), mean), kappa)
 
 plot(apply(out$eta, c(2, 3, 4), mean), apply(out$omega, c(2, 3, 4), mean))
@@ -109,7 +109,7 @@ p1 <- rbind(dat_pi, dat_obs) %>%
     geom_abline(slope = 1, intercept = 0, color = "red")  + 
     facet_grid(species ~ time)
 
-CairoPDF("figures/model_vs_obs_prop.pdf")
+CairoPDF(paste0("figures/model_vs_obs_prop",version,".pdf"))
 print(p1)
 dev.off()
 
@@ -170,6 +170,6 @@ calibration_matern <- dat_matern %>%
 
 
 ggsave(calibration_matern, 
-       file = "figures/calibration.pdf",
+       file = paste0("figures/calibration",version,".pdf"),
        width = 16, height = 9, device = cairo_pdf, units = "in")
 
