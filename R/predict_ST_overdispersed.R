@@ -3,10 +3,34 @@ library(ggplot2)
 library(fields)
 library(rgdal)
 
-version <- '3.1'
+version <- '4.1'
+
+samples=200
 
 out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_overdispersed.RDS')))
 dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
+
+
+## sample the number of iterations from out 
+if (samples<length(out$rho))
+{
+    oclass <- class(out)
+    samps <- sample(1:dim(out$beta)[1],samples,replace=F)
+    out <- lapply(out,function(x){
+        if (is.vector(x))
+        {
+            x=x[samps]
+        } else if (length(dim(x))==4) {
+            x=x[samps,,,,drop=FALSE]
+        } else if (length(dim(x))==3) {
+            x=x[samps,,,drop=FALSE]
+        } else  {
+            x=x[samps,,drop=FALSE]
+        }
+    })
+    class(out) <- oclass
+}
+
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -47,6 +71,6 @@ if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version
   )
   saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_overdispersed.RDS')),
           compress = FALSE)
-  pushoverr::pushover(message = "Finished predicting overdispersed Matern model")
+#  pushoverr::pushover(message = "Finished predicting overdispersed Matern model")
 }
 

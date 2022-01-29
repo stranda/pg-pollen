@@ -10,8 +10,8 @@ require(holoSimCell)
 require(rgdal)
 
 # read in predictions, convert to list of lists (times within iterations)
-preds <- readRDS('output/preds_frax_n50_v4.0.RDS')
-locs <- readRDS('data/grid_3.1.RDS')
+preds <- readRDS('output/preds_frax_n200_v4.1.RDS')
+locs <- readRDS('data/grid_4.1.RDS')
 n_iter <- dim(preds)[1]
 n_times <- dim(preds)[3]
 
@@ -76,7 +76,7 @@ for(i in 1:n_iter){
   interp_list[[i]] <- interpolateRasters(rasterstack_list[[i]], interpFrom = times, interpTo = interp_times)
   interp_list[[i]] <- unstack(interp_list[[i]])
 }
-saveRDS(interp_list, 'output/interp_preds_n50_v4.0.RDS')
+saveRDS(interp_list, 'output/interp_preds_n200_v4.1.RDS')
 
 
 # mask out ice/water
@@ -87,7 +87,7 @@ for(i in 1:n_iter){
   masked_interp_list[[i]][[j]] <- mask(masked_interp_list[[i]][[j]], mask = mask_list[[j]])
   }
 }
-saveRDS(masked_interp_list, 'output/interp_masked_preds_n50_v4.0.RDS')
+saveRDS(masked_interp_list, 'output/interp_masked_preds_n200_v4.1.RDS')
 
 
 # weight relative abundance by proportion of cell covered by land (for cells with partial glacial coverage)
@@ -110,7 +110,7 @@ for(i in 1:n_iter){
   masked_interp_revalue[[i]] <- rev(masked_interp_revalue[[i]])
   masked_interp_revalue[[i]] <- stack(masked_interp_revalue[[i]])
 }
-saveRDS(masked_interp_revalue, 'output/preds_for_ABC_n50_v4.0.RDS')
+saveRDS(masked_interp_revalue, 'output/preds_for_ABC_n200_v4.1.RDS')
 
 # first 11 time slices contain no maps - fill those in with most recent map
 interp_revalue_fill <- masked_interp_revalue
@@ -119,7 +119,7 @@ for(i in 1:n_iter){
   interp_revalue_fill[[i]][691:701] <- interp_revalue_fill[[i]][[690]]
   interp_revalue_fill[[i]] <- stack(interp_revalue_fill[[i]])
 }
-saveRDS(interp_revalue_fill, 'output/preds_for_ABC_n50_v4.0_final.RDS')
+saveRDS(interp_revalue_fill, 'output/preds_for_ABC_n200_v4.1_final.RDS')
 
 
 
@@ -133,8 +133,8 @@ proj <- proj4string(sim)
 
 # read in fraxinus predictions for each of the 50 iterations
 # subset to only LGM predictions
-grid <- readRDS('data/grid_3.1.RDS')
-frax <- readRDS('output/preds_frax_n50_v4.0.RDS')
+grid <- readRDS('data/grid_4.1.RDS')
+frax <- readRDS('output/preds_frax_n200_v4.1.RDS')
 frax_lgm <- frax[,,22]
 
 # convert data array to list of dataframes (1 dataframe for each iteration)
@@ -181,7 +181,7 @@ for(i in 1:n_iter){
 refuge_list <- list()
 for(i in 1:n_iter){
   refuge_list[[i]] <- assignRefugiaFromAbundanceRaster(abund = lgm_preds_revalue[[i]],
-                                                       sim = sim, threshold = 0.03)
+                                                       sim = sim, threshold = 0.015)
 }
 
 # check to make sure all iterations have been assigned a refuge
@@ -197,7 +197,7 @@ refuge_for_allan <- list()
 for(i in 1:n_iter){
   refuge_for_allan[[i]] <- refuge_list[[i]][["simulationScale"]]@layers[[2]]
 }
-saveRDS(refuge_for_allan, 'output/refuge_rasters_n50_V4.0.RDS')
+saveRDS(refuge_for_allan, 'output/refuge_rasters_n200_V4.1.RDS')
 
 
 # PLOT 50 REFUGIA ON SINGLE PDF

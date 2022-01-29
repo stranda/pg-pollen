@@ -1,4 +1,4 @@
-setwd('C:/Users/abrow/Documents/pg-pollen')
+#setwd('C:/Users/abrow/Documents/pg-pollen')
 require(tidyr)
 require(ggplot2)
 require(rasterVis)
@@ -12,14 +12,15 @@ require(dplyr)
 require(holoSimCell)
 require(gridExtra)
 require(ggrepel)
+require(parallel)
 
 ################################################
 ## CALCULATE AND PLOT BIOTIC VELOCITIES
 ################################################
 
 # read prediction output (50 iterations randomly sampled from all 1000 model iterations)
-locs_grid <- readRDS('data/grid_3.1.RDS')
-preds <- readRDS('output/preds_frax_n200_v4.0.RDS')
+locs_grid <- readRDS('data/grid_4.1.RDS')
+preds <- readRDS('output/preds_frax_n200_v4.1.RDS')
 
 # specify time bins; use median of time bins for subsequent work
 time <- c(-70, seq(705, by = 990, length.out = 22))
@@ -106,22 +107,28 @@ for(i in 1:n_iter){
 
 #### CALCULATE BVs
 # iterate bioticVelocity function through each iteration (takes ~6 minutes)
-bv_list <- list()
-for(i in 1:n_iter){
-  bv_list[[i]] <- bioticVelocity(rasterstack_rev[[i]],
-                                 times = rev(time$time_mid) * -1,
-                                 onlyInSharedCells = TRUE)
-}
+#bv_list <- list()
+#for(i in 1:n_iter){
+#  bv_list[[i]] <- bioticVelocity(rasterstack_rev[[i]],
+#                                 times = rev(time$time_mid) * -1,
+#                                 onlyInSharedCells = TRUE)
+#}
+
+##parallelized calculate BVs
+bv_list = mclapply(rasterstack_rev, mc.cores=12, function(x) {
+    enmSdm::bioticVelocity(x, times=(rev(time$time_mid)* -1), onlyInSharedCells=TRUE)
+    })
 
 # convert list of dataframes to single dataframe
 bvs <- bind_rows(bv_list)
-saveRDS(bvs, 'output/bvs_n200_v4.0.RDS')
+saveRDS(bvs, 'output/bvs_n200_v4.1.RDS')
 
 #### PLOT BVS WITH UNCERTAINTY
 time$time_label <- NA
 for(i in 2:nrow(time)){
   time$time_label[i] <- paste0(time$time_mid[i], ' - ', time$time_mid[i-1])
 }
+
 
 ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity)) +
   geom_boxplot() + 
@@ -134,7 +141,7 @@ ggplot(bvs, aes(x = factor(timeFrom), y = centroidVelocity)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/frax_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
+ggsave('figures/frax_BVs_n200_v4.1.pdf', width = 9, height = 4, unit = 'in', device=cairo_pdf)
 
 
 ggplot(bvs, aes(x = factor(timeFrom), y = nCentroidVelocity)) +
@@ -148,7 +155,7 @@ ggplot(bvs, aes(x = factor(timeFrom), y = nCentroidVelocity)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/frax_north_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
+ggsave('figures/frax_north_BVs_n200_v4.1.pdf', width = 9, height = 4, unit = 'in',device=cairo_pdf)
 
 ggplot(bvs, aes(x = factor(timeFrom), y = sCentroidVelocity)) +
   geom_boxplot() + 
@@ -161,7 +168,7 @@ ggplot(bvs, aes(x = factor(timeFrom), y = sCentroidVelocity)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/frax_south_BVs_n200_v4.0.png', width = 9, height = 4, unit = 'in')
+ggsave('figures/frax_south_BVs_n200_v4.1.pdf', width = 9, height = 4, unit = 'in', device=cairo_pdf)
 
 
 # side by side boxplots of 3 BV measures
@@ -182,7 +189,7 @@ ggplot(bvs_ns, aes(x = factor(timeFrom), y = velocity, color = type)) +
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12),
         panel.grid.major.x = element_blank())
-ggsave('figures/frax_3_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
+ggsave('figures/frax_3_BVs_n200_v4.1.pdf', width = 12, height = 4, unit = 'in',device=cairo_pdf)
 
 # north-south, east - west movement
 bvs_nsew <- bvs %>% 
@@ -203,7 +210,7 @@ ggplot(bvs_nsew, aes(x = factor(timeFrom), y = velocity, color = type)) +
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12))
-ggsave('figures/frax_4_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
+ggsave('figures/frax_4_BVs_n200_v4.1.pdf', width = 12, height = 4, unit = 'in',device=cairo_pdf)
 
 
 
@@ -213,7 +220,7 @@ ggsave('figures/frax_4_BVs_n200_v4.0.png', width = 12, height = 4, unit = 'in')
 #################################################
 # require(ggrepel)
 # use biotic velocity dataframe
-bvs <- readRDS('output/bvs_n200_v4.0.RDS')
+bvs <- readRDS('output/bvs_n200_v4.1.RDS')
 
 # take average BV across iterations
 bvs_summ <- bvs %>% 

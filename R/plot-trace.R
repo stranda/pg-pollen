@@ -27,9 +27,11 @@ plot_trace <- function(out, base_size = 12, file = NULL, width = 16, height = 9)
     # if (!is.null(file) & !is.character(file))
     #     stop("file must be a character string")
     
+    library(latex2exp)
+    
     p_tau2 <- NULL
     
-    if (class(out) == "pg_stlm") {
+    if (class(out) %in% c("pg_stlm", "pg_stlm_overdispersed", "pg_stlm_latent_overdispersed")) {
         p_tau2 <- data.frame(
             tau2      = c(out$tau2),
             iteration = rep(1:nrow(out$tau2)),
@@ -102,7 +104,7 @@ plot_trace <- function(out, base_size = 12, file = NULL, width = 16, height = 9)
         theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
         ylab(TeX("$\\beta$"))
     
-    if (class(out) == "pg_stlm") {
+    if (class(out) %in% c("pg_stlm", "pg_stlm_overdispersed", "pg_stlm_latent_overdispersed")) {
         thetas <- exp(out$theta)
         dimnames(thetas) <- list(
             iteration = 1:dim(thetas)[1],
@@ -123,7 +125,7 @@ plot_trace <- function(out, base_size = 12, file = NULL, width = 16, height = 9)
     }
     
     p_rho <- NULL
-    if (class(out) == "pg_stlm") {
+    if (class(out) %in% c("pg_stlm", "pg_stlm_overdispersed", "pg_stlm_latent_overdispersed")) {
         p_rho <- data.frame(rho = out$rho) %>%
             mutate(iteration = 1:n()) %>%
             ggplot(aes(x = .data$iteration, y = .data$rho)) +
@@ -145,13 +147,13 @@ plot_trace <- function(out, base_size = 12, file = NULL, width = 16, height = 9)
     }    
     
     if (is.null(file)) {
-        if (class(out) == "pg_stlm") {
+        if (class(out) %in% c("pg_stlm", "pg_stlm_overdispersed", "pg_stlm_latent_overdispersed")) {
             return((p_tau2  + p_theta) / (p_beta + p_rho))
         } else {
             return((p_tau2 + p_sigma2) / (p_rho + p_beta))
         }
     } else {
-        if (class(out) == "pg_stlm") {
+        if (class(out) %in% c("pg_stlm", "pg_stlm_overdispersed", "pg_stlm_latent_overdispersed")) {
             ggsave(filename = file,
                    plot = (p_tau2  + p_theta) / (p_beta + p_rho),
                    device = "png",

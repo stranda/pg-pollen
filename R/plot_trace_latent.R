@@ -1,4 +1,4 @@
-#' Trace plots from the output of `pg_stlm()` or `pg_stlm_mra()`
+#' Trace plots from the output of `pg_stlm_overdispersed' 'pg_stlm_latent_overdispersed'
 #'
 #' @param out The output from `pg_stlm()` or `pg_stlm_mra()`
 #' @param base_size The base size for the plot

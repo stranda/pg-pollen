@@ -1,12 +1,34 @@
 library(pgR)
 library(ggplot2)
 library(fields)
-library(rgdal)
+library(rgdal,quiet=T)
 
-version <- '4.0'
+version <- '4.1'
 
-out <- readRDS(here::here('output.first', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
-dat <- readRDS(here::here('output.first', paste0('polya-gamma-dat_', version,'.RDS')))
+samples <- 10
+
+out <- readRDS(here::here('output', paste0('polya-gamma-posts_', version, '_latent_overdispersed.RDS')))
+dat <- readRDS(here::here('output', paste0('polya-gamma-dat_', version,'.RDS')))
+
+## sample the number of iterations from out 
+if (samples<length(out$rho))
+{
+    oclass <- class(out)
+    samps <- sample(1:dim(out$beta)[1],samples,replace=F)
+    out <- lapply(out,function(x){
+        if (is.vector(x))
+        {
+            x=x[samps]
+        } else if (length(dim(x))==4) {
+            x=x[samps,,,,drop=FALSE]
+        } else if (length(dim(x))==3) {
+            x=x[samps,,,drop=FALSE]
+        } else  {
+            x=x[samps,,drop=FALSE]
+        }
+    })
+    class(out) <- oclass
+}
 
 # note that locations were scaled to fit the model
 # unscaling to think in meters, then will rescale again before prediction
@@ -30,10 +52,8 @@ X_pred <- matrix(rep(1, nrow(locs_grid)), nrow(locs_grid), 1)
 locs = locs_pollen/rescale
 locs_pred = locs_grid/rescale
 
-#### MAKE PREDICTIONS ####
-# class(out) <- "pg_stlm"
 
-if (!file.exists(here::here("output.first", paste0('polya-gamma-predictions_', version, '_latent_overdispersed.RDS')))) {
+if (!file.exists(here::here("output", paste0('polya-gamma-predictions_', version, '_latent_overdispersed_samples_',samples,'.RDS')))) {
   preds = predict_pg_stlm_latent_overdispersed(
     out,
     X,
@@ -45,8 +65,8 @@ if (!file.exists(here::here("output.first", paste0('polya-gamma-predictions_', v
     progress = TRUE, 
     verbose = TRUE
   )
-  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_latent_overdispersed.RDS')),
-          compress = FALSE)
+  saveRDS(preds, here::here("output", paste0('polya-gamma-predictions_', version, '_latent_overdispersed_samples_',samples,'.RDS')),
+          compress = TRUE)
   #pushoverr::pushover(message = "Finished predicting latent overdispersed Matern model")
 }
 
