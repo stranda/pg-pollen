@@ -137,7 +137,8 @@ for(i in 1:n_iter){
 
 ##parallelized calculate BVs
 bv_list = mclapply(rasterstack_rev, mc.cores=12, function(x) {
-    enmSdm::bioticVelocity(x, times=(rev(time$time_mid)* -1), onlyInSharedCells=FALSE) #false to match climate
+    enmSdm::bioticVelocity(x, times=(rev(time$time_mid)* -1), onlyInSharedCells=FALSE,
+                           quants=c(0.05,0.25,0.5,0.75,0.95)) #false to match climate
     })
 
 # convert list of dataframes to single dataframe
@@ -168,6 +169,7 @@ ggplot(abv, aes(x=as.factor(timeFrom), y=nsQuantVelocity_quant0p95)) + geom_boxp
 
 
 dev.off()
+
 
 
 

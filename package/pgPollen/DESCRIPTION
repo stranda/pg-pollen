@@ -1,9 +1,49 @@
 Package: pgPollen
 Type: Package
-Title: What the package does (short line)
-Version: 1.0
+Title: Mulitspecies pollen inference for eastern NA
+Version: 0.0.1
 Date: 2021-11-01
-Author: Who wrote it
-Maintainer: Who to complain to <yourfault@somewhere.net>
-Description: More about what it does (maybe more than one line)
-License: What license is it under?
+Author: Alissa Brown, Andria Dawson
+Maintainer: Allan Strand <stranda@gmail.com>
+Description: Uses a Polya-gamma-based sampler for Bayesian inference of species abundance from pollen from 14 species in eastern and central north america
+License: GPL2
+Imports:
+	tidyverse,	
+	ggplot2,
+	rasterVis,
+	fields,
+	rgdal,
+	raster,
+	enmSdm,
+	rgeos,
+	sp,
+	dplyr,
+	holoSimCell,
+	gridExtra,
+	ggrepel,
+	parallel,
+	viridis,
+	ggforce,
+	xtable,
+	splines,
+	reshape2,
+	latex2exp,
+	loo,
+	mapproj,
+	mvnfast,
+	neotoma,
+	patchwork,
+	pgR,
+	rdist,
+	analogue,
+	BayesMRA,
+	Bchron,
+	Cairo,
+	data.table,
+	geosphere,
+	here,
+	invgamma
+Remotes:
+	stranda/holoSimCell,
+	adamlillith/enmSdm,
+	jtipton25/pgR
